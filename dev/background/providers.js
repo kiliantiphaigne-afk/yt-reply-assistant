@@ -1,6 +1,5 @@
 // =============================================================================
 // AI Provider Abstraction
-// Each provider implements: { name, isAvailable(), generate(systemPrompt, userPrompt) }
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -8,7 +7,7 @@
 // ---------------------------------------------------------------------------
 export const ChromeAIProvider = {
   name: 'chrome-ai',
-  label: 'Chrome Built-in AI',
+  label: 'Chrome IA integree',
 
   async isAvailable() {
     try {
@@ -36,14 +35,23 @@ export const AnthropicProvider = {
   label: 'Anthropic (Claude Haiku)',
 
   async isAvailable() {
-    const { settings } = await chrome.storage.local.get('settings');
-    return !!settings?.anthropicKey;
+    try {
+      const { settings } = await chrome.storage.local.get('settings');
+      return !!settings?.anthropicKey;
+    } catch {
+      return false;
+    }
   },
 
-  async generate(systemPrompt, userPrompt) {
-    const { settings } = await chrome.storage.local.get('settings');
-    const apiKey = settings?.anthropicKey;
-    if (!apiKey) throw new Error('Anthropic API key not configured');
+  async generate(systemPrompt, userPrompt, apiKeyOverride) {
+    let apiKey = apiKeyOverride;
+    if (!apiKey) {
+      const { settings } = await chrome.storage.local.get('settings');
+      apiKey = settings?.anthropicKey;
+    }
+    if (!apiKey) throw new Error('Cle API Anthropic non configuree');
+
+    console.log('[YT Reply Assistant] Appel Anthropic API...');
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -61,12 +69,20 @@ export const AnthropicProvider = {
       }),
     });
 
+    console.log('[YT Reply Assistant] Anthropic status:', res.status);
+
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Anthropic API error ${res.status}`);
+      const errBody = await res.text();
+      console.error('[YT Reply Assistant] Anthropic erreur body:', errBody);
+      let errMsg;
+      try {
+        errMsg = JSON.parse(errBody).error?.message;
+      } catch { /* ignore */ }
+      throw new Error(errMsg || `Erreur API Anthropic (${res.status})`);
     }
 
     const data = await res.json();
+    console.log('[YT Reply Assistant] Anthropic OK, tokens:', data.usage?.input_tokens, '+', data.usage?.output_tokens);
     return data.content[0].text;
   },
 };
@@ -79,14 +95,21 @@ export const OpenAIProvider = {
   label: 'OpenAI (GPT-4o mini)',
 
   async isAvailable() {
-    const { settings } = await chrome.storage.local.get('settings');
-    return !!settings?.openaiKey;
+    try {
+      const { settings } = await chrome.storage.local.get('settings');
+      return !!settings?.openaiKey;
+    } catch {
+      return false;
+    }
   },
 
-  async generate(systemPrompt, userPrompt) {
-    const { settings } = await chrome.storage.local.get('settings');
-    const apiKey = settings?.openaiKey;
-    if (!apiKey) throw new Error('OpenAI API key not configured');
+  async generate(systemPrompt, userPrompt, apiKeyOverride) {
+    let apiKey = apiKeyOverride;
+    if (!apiKey) {
+      const { settings } = await chrome.storage.local.get('settings');
+      apiKey = settings?.openaiKey;
+    }
+    if (!apiKey) throw new Error('Cle API OpenAI non configuree');
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -105,8 +128,12 @@ export const OpenAIProvider = {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `OpenAI API error ${res.status}`);
+      const errBody = await res.text();
+      let errMsg;
+      try {
+        errMsg = JSON.parse(errBody).error?.message;
+      } catch { /* ignore */ }
+      throw new Error(errMsg || `Erreur API OpenAI (${res.status})`);
     }
 
     const data = await res.json();
@@ -119,21 +146,15 @@ export const OpenAIProvider = {
 // ---------------------------------------------------------------------------
 const ALL_PROVIDERS = [ChromeAIProvider, AnthropicProvider, OpenAIProvider];
 
-/**
- * Get the active provider (user preference → fallback chain).
- * Returns { provider, fallback: boolean }
- */
 export async function resolveProvider() {
   const { settings } = await chrome.storage.local.get('settings');
   const preferred = settings?.provider || 'chrome-ai';
 
-  // Try preferred first
   const pref = ALL_PROVIDERS.find((p) => p.name === preferred);
   if (pref && (await pref.isAvailable())) {
     return { provider: pref, fallback: false };
   }
 
-  // Fallback chain: API providers first (better quality), then Chrome AI
   const fallbackOrder = ALL_PROVIDERS.filter((p) => p.name !== preferred);
   for (const p of fallbackOrder) {
     if (await p.isAvailable()) {
@@ -145,52 +166,59 @@ export async function resolveProvider() {
 }
 
 /**
- * Test a provider with a simple prompt. Returns { ok, error? }
+ * Test un provider avec un prompt simple.
+ * Ne modifie PAS le storage — fait l'appel directement avec la cle fournie.
  */
 export async function testProvider(providerName, apiKey) {
+  console.log('[YT Reply Assistant] Test provider:', providerName);
+
   try {
     if (providerName === 'chrome-ai') {
       const available = await ChromeAIProvider.isAvailable();
-      if (!available) return { ok: false, error: 'Chrome AI not available. Enable the Prompt API flag.' };
-      await ChromeAIProvider.generate('You are helpful.', 'Say "OK" and nothing else.');
+      if (!available) {
+        return { ok: false, error: 'Chrome IA non disponible. Active le flag Prompt API.' };
+      }
+      await ChromeAIProvider.generate('Tu es utile.', 'Dis "OK" et rien d\'autre.');
       return { ok: true };
     }
 
     if (providerName === 'anthropic') {
-      // Temporarily store key for the test
+      if (!apiKey) {
+        const { settings } = await chrome.storage.local.get('settings');
+        apiKey = settings?.anthropicKey;
+      }
+      if (!apiKey) return { ok: false, error: 'Aucune cle API fournie' };
+
+      // Appel direct avec la cle — pas de modification du storage
+      await AnthropicProvider.generate('Tu es utile.', 'Dis "OK" et rien d\'autre.', apiKey);
+
+      // Sauvegarder la cle seulement si le test reussit
       const { settings = {} } = await chrome.storage.local.get('settings');
-      const oldKey = settings.anthropicKey;
       settings.anthropicKey = apiKey;
       await chrome.storage.local.set({ settings });
 
-      try {
-        await AnthropicProvider.generate('You are helpful.', 'Say "OK" and nothing else.');
-        return { ok: true };
-      } catch (e) {
-        settings.anthropicKey = oldKey;
-        await chrome.storage.local.set({ settings });
-        return { ok: false, error: e.message };
-      }
+      return { ok: true };
     }
 
     if (providerName === 'openai') {
+      if (!apiKey) {
+        const { settings } = await chrome.storage.local.get('settings');
+        apiKey = settings?.openaiKey;
+      }
+      if (!apiKey) return { ok: false, error: 'Aucune cle API fournie' };
+
+      await OpenAIProvider.generate('Tu es utile.', 'Dis "OK" et rien d\'autre.', apiKey);
+
       const { settings = {} } = await chrome.storage.local.get('settings');
-      const oldKey = settings.openaiKey;
       settings.openaiKey = apiKey;
       await chrome.storage.local.set({ settings });
 
-      try {
-        await OpenAIProvider.generate('You are helpful.', 'Say "OK" and nothing else.');
-        return { ok: true };
-      } catch (e) {
-        settings.openaiKey = oldKey;
-        await chrome.storage.local.set({ settings });
-        return { ok: false, error: e.message };
-      }
+      return { ok: true };
     }
 
-    return { ok: false, error: 'Unknown provider' };
+    return { ok: false, error: 'Provider inconnu' };
   } catch (e) {
-    return { ok: false, error: e.message };
+    console.error('[YT Reply Assistant] Test echoue:', e);
+    return { ok: false, error: e.message || String(e) };
   }
 }
