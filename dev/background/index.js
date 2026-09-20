@@ -89,8 +89,21 @@ async function generateSuggestions({
   videoId,
   videoTitle: providedTitle,
 }) {
-  // Get transcript
-  const transcript = await getTranscript(videoId);
+  console.log('[YT Reply Assistant] generateSuggestions:', {
+    commentText: commentText?.slice(0, 50),
+    commentAuthor,
+    videoId,
+  });
+
+  // Get transcript (skip if no videoId, don't crash)
+  let transcript = { text: '', title: providedTitle || '', partial: true };
+  if (videoId) {
+    try {
+      transcript = await getTranscript(videoId);
+    } catch (e) {
+      console.warn('[YT Reply Assistant] Transcript fetch failed (non-bloquant):', e.message);
+    }
+  }
 
   // Get style profile
   const profile = await getStyleProfile();
@@ -102,23 +115,28 @@ async function generateSuggestions({
   const userPrompt = buildUserPrompt({
     commentText,
     commentAuthor: commentAuthor || 'Un viewer',
-    videoTitle: providedTitle || transcript.title,
+    videoTitle: providedTitle || transcript.title || 'Video YouTube',
     videoTranscript: transcript.text,
     partialContext: transcript.partial,
   });
 
   // Resolve AI provider
   const { provider, fallback } = await resolveProvider();
+  console.log('[YT Reply Assistant] Provider:', provider?.name || 'AUCUN', 'fallback:', fallback);
+
   if (!provider) {
     return {
-      error: 'Aucun provider IA disponible. Configure-en un dans les parametres de l\'extension.',
+      error: 'Aucun provider IA disponible. Configurez-en un dans les parametres de l\'extension.',
       suggestions: [],
     };
   }
 
   // Generate
+  console.log('[YT Reply Assistant] Appel IA en cours...');
   const rawResponse = await provider.generate(systemPrompt, userPrompt);
+  console.log('[YT Reply Assistant] Reponse brute:', rawResponse?.slice(0, 100));
   const suggestions = parseSuggestions(rawResponse);
+  console.log('[YT Reply Assistant] Suggestions parsees:', suggestions.length);
 
   return {
     suggestions,

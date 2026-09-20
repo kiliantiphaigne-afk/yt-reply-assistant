@@ -32,8 +32,33 @@
   transform: scale(0.97);
 }
 
+.yt-reply-assistant-trigger:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .yt-reply-assistant-trigger-sparkle {
   font-size: 12px;
+}
+
+/* Loading state on pill */
+.yt-reply-assistant-trigger-loading {
+  background: rgba(62, 166, 255, 0.14) !important;
+  border-color: rgba(62, 166, 255, 0.35) !important;
+}
+
+.yt-reply-assistant-trigger-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(62, 166, 255, 0.3);
+  border-top-color: #3ea6ff;
+  border-radius: 50%;
+  animation: yt-ra-spin 0.6s linear infinite;
+}
+
+@keyframes yt-ra-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Light theme */
