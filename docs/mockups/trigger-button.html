@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="fr" dark>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YT Reply Assistant — Bouton Generer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0f0f0f;
+      color: #e0e0e0;
+      font-family: 'Roboto', sans-serif;
+      min-height: 100vh;
+      padding: 60px 32px 80px;
+    }
+
+    .preview-banner {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #f59e0b;
+      color: #000;
+      text-align: center;
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      z-index: 9999;
+    }
+
+    .section-label {
+      text-align: center;
+      color: #333;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      padding: 32px 0 16px;
+      border-top: 1px dashed #1e1e1e;
+      margin-top: 16px;
+    }
+    .section-label:first-of-type { border-top: none; margin-top: 0; }
+
+    .shell { max-width: 750px; margin: 0 auto; }
+
+    /* ===== COMMENTAIRE ===== */
+    .comment {
+      padding: 20px 0;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .comment-main {
+      display: flex;
+      gap: 14px;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .comment-body { flex: 1; }
+    .comment-author {
+      font-size: 13px;
+      font-weight: 500;
+      color: #aaa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .comment-date { font-size: 11px; color: #484848; font-weight: 400; }
+    .comment-text {
+      font-size: 14px;
+      color: #e0e0e0;
+      line-height: 1.55;
+      margin-top: 6px;
+      margin-bottom: 10px;
+    }
+
+    /* Actions YouTube natives */
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .yt-btn {
+      background: none;
+      border: none;
+      color: #606060;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 150ms, color 150ms;
+      font-family: inherit;
+    }
+    .yt-btn:hover { background: #272727; color: #e0e0e0; }
+
+    /* ===== OPTION A : Bouton inline dans la barre d'actions ===== */
+    .yt-btn.ai-trigger {
+      color: #606060;
+      gap: 4px;
+      border: none;
+      background: none;
+    }
+    .yt-btn.ai-trigger:hover {
+      color: #3ea6ff;
+      background: rgba(62, 166, 255, 0.08);
+    }
+    .yt-btn.ai-trigger .sparkle {
+      font-size: 13px;
+    }
+
+    /* Separateur dans la barre */
+    .action-sep {
+      width: 1px;
+      height: 16px;
+      background: #272727;
+      margin: 0 4px;
+    }
+
+    /* ===== OPTION B : Petit bouton pill accent ===== */
+    .ai-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px;
+      border-radius: 14px;
+      background: rgba(62, 166, 255, 0.08);
+      border: 1px solid rgba(62, 166, 255, 0.15);
+      color: #3ea6ff;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 150ms, border-color 150ms;
+      font-family: inherit;
+      margin-left: 4px;
+    }
+    .ai-pill:hover {
+      background: rgba(62, 166, 255, 0.14);
+      border-color: rgba(62, 166, 255, 0.35);
+    }
+    .ai-pill:active {
+      transform: scale(0.97);
+    }
+    .ai-pill .sparkle { font-size: 12px; }
+
+    /* ===== OPTION C : Icone seule (le plus discret) ===== */
+    .ai-icon-btn {
+      background: none;
+      border: none;
+      color: #484848;
+      font-size: 16px;
+      padding: 6px 8px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 150ms, color 150ms;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 2px;
+    }
+    .ai-icon-btn:hover {
+      background: rgba(62, 166, 255, 0.08);
+      color: #3ea6ff;
+    }
+
+    /* Description */
+    .option-desc {
+      color: #404040;
+      font-size: 11px;
+      margin-top: 6px;
+      margin-left: 54px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<div class="preview-banner">
+  PREVIEW — 3 options pour le bouton Generer. Le bouton s'integre dans la barre d'actions native.
+</div>
+
+<div class="shell">
+
+  <!-- ===== OPTION A ===== -->
+  <div class="section-label">Option A — Bouton texte dans la barre d'actions (comme un bouton YouTube natif)</div>
+
+  <div class="comment">
+    <div class="comment-main">
+      <div class="avatar" style="background: #e85d04;">M</div>
+      <div class="comment-body">
+        <div class="comment-author">
+          Maxime Lebrun
+          <span class="comment-date">il y a 2 heures</span>
+        </div>
+        <div class="comment-text">
+          Franchement trop bien explique ! Par contre, tu parles de la strategie de prix au debut mais t'as pas vraiment detaille comment tu fixais tes tarifs au tout debut quand t'avais 0 client. C'est ca qui m'interesse le plus perso 🤔
+        </div>
+        <div class="actions">
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+            12
+          </button>
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+          </button>
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+            Repondre
+          </button>
+          <div class="action-sep"></div>
+          <button class="yt-btn ai-trigger">
+            <span class="sparkle">✨</span>
+            Generer IA
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="option-desc">→ Meme style que les boutons natifs. Separe par un petit trait. Discret mais visible.</div>
+  </div>
+
+
+  <!-- ===== OPTION B ===== -->
+  <div class="section-label">Option B — Pill accent bleu dans la barre d'actions</div>
+
+  <div class="comment">
+    <div class="comment-main">
+      <div class="avatar" style="background: #7b2cbf;">S</div>
+      <div class="comment-body">
+        <div class="comment-author">
+          Sarah Dev
+          <span class="comment-date">il y a 5 heures</span>
+        </div>
+        <div class="comment-text">
+          Est-ce que t'utilises un framework particulier ou c'est du custom ? Je suis dev et je cherche a lancer un SaaS aussi mais je sais pas trop par ou commencer cote technique
+        </div>
+        <div class="actions">
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+            8
+          </button>
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+          </button>
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+            Repondre
+          </button>
+          <button class="ai-pill">
+            <span class="sparkle">✨</span>
+            Generer
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="option-desc">→ Pill bleue accent. Se distingue des boutons natifs. Plus visible, plus "call to action".</div>
+  </div>
+
+
+  <!-- ===== OPTION C ===== -->
+  <div class="section-label">Option C — Icone seule (le plus minimaliste)</div>
+
+  <div class="comment">
+    <div class="comment-main">
+      <div class="avatar" style="background: #0077b6;">A</div>
+      <div class="comment-body">
+        <div class="comment-author">
+          Alex Martin
+          <span class="comment-date">il y a 8 heures</span>
+        </div>
+        <div class="comment-text">
+          J'ai fait exactement le meme parcours mais en e-commerce. Le passage de side project a full-time c'est un sacre step. Comment t'as gere financierement la transition ?
+        </div>
+        <div class="actions">
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+            21
+          </button>
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+          </button>
+          <button class="yt-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+            Repondre
+          </button>
+          <button class="ai-icon-btn" title="Generer une reponse IA">✨</button>
+        </div>
+      </div>
+    </div>
+    <div class="option-desc">→ Juste une icone. Hover en bleu. Maximum discret. Tooltip au survol.</div>
+  </div>
+
+</div>
+
+</body>
+</html>
