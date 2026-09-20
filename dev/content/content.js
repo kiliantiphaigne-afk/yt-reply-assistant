@@ -69,11 +69,17 @@
   // -------------------------------------------------------------------------
 
   function findCommentContainers() {
-    let containers = findElements(document, [
-      'ytcp-comment-thread',
-      'ytcp-comment',
-      '.comment-thread-renderer',
-    ]);
+    // Prefer the most specific element (ytcp-comment inside ytcp-comment-thread)
+    // to avoid duplicates (thread contains comment)
+    let containers = findElements(document, ['ytcp-comment']);
+
+    // If no ytcp-comment, try thread-level
+    if (containers.length === 0) {
+      containers = findElements(document, [
+        'ytcp-comment-thread',
+        '.comment-thread-renderer',
+      ]);
+    }
 
     if (containers.length === 0) {
       containers = findElements(document, [
@@ -108,7 +114,12 @@
         .filter(Boolean);
     }
 
-    return containers;
+    // Deduplicate: if a container is inside another container, skip the outer one
+    const deduped = containers.filter((c) =>
+      !containers.some((other) => other !== c && c.contains(other))
+    );
+
+    return deduped;
   }
 
   function getCommentText(container) {
@@ -218,8 +229,8 @@
 
     const btn = document.createElement('button');
     btn.className = TRIGGER_CLASS;
-    btn.innerHTML = '💬 Generer';
-    btn.title = 'Generer des suggestions de reponse IA';
+    btn.innerHTML = '<span class="' + NAMESPACE + '-trigger-sparkle">✨</span> Generer';
+    btn.title = 'Generer une reponse IA';
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -227,7 +238,18 @@
       generateForContainer(container, true);
     });
 
-    container.appendChild(btn);
+    // Try to inject into the native actions bar (next to like/dislike/reply)
+    const actionsBar = findElement(container, [
+      '#toolbar', '#action-buttons', '.comment-actions',
+      '[class*="action-buttons"]', '[class*="toolbar"]',
+    ]);
+
+    if (actionsBar) {
+      actionsBar.appendChild(btn);
+    } else {
+      // Fallback: append to the container itself
+      container.appendChild(btn);
+    }
   }
 
   // -------------------------------------------------------------------------
