@@ -78,10 +78,18 @@ html:not([dark]) .yt-reply-assistant-trigger:hover,
 /* ---------- Container ---------- */
 
 .yt-reply-assistant-suggestions {
-  margin: 12px 0 12px 54px;
+  margin: 4px 0 12px 54px;
+  padding: 8px 0;
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
   line-height: 1.4;
+  position: relative;
+  z-index: 10;
+  overflow: visible !important;
+  max-height: none !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1;
 }
 
 /* ---------- Label row ---------- */
@@ -275,7 +283,7 @@ html:not([dark]) .yt-reply-assistant-trigger:hover,
 /* ---------- Etat: posted (disparition) ---------- */
 
 .yt-reply-assistant-suggestions.yt-reply-assistant-posted {
-  opacity: 0;
+  opacity: 0 !important;
   transition: opacity 0.3s ease;
 }
 
@@ -382,14 +390,15 @@ html:not([dark]) .yt-reply-assistant-trigger:hover,
 /* ---------- Dismissed state ---------- */
 
 .yt-reply-assistant-dismissed {
-  margin-top: 12px;
-  margin-left: 54px;
+  margin: 4px 0 12px 54px;
   display: flex;
   align-items: center;
   gap: 6px;
   color: #333;
   font-size: 11px;
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  position: relative;
+  z-index: 10;
 }
 
 .yt-reply-assistant-dismissed button {

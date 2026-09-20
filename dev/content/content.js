@@ -365,22 +365,55 @@
     `;
   }
 
+  /**
+   * Find existing suggestions for a given comment, checking both sibling
+   * elements and (legacy) children of the container.
+   */
+  function findExistingSuggestions(container, commentId) {
+    // Check next siblings first (new insertion method)
+    if (commentId) {
+      let sibling = container.nextElementSibling;
+      while (sibling) {
+        if (sibling.classList.contains(SUGGESTIONS_CLASS) &&
+            sibling.dataset.commentId === commentId) {
+          return sibling;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+    }
+    // Also check ALL siblings that are suggestions (for cases without commentId)
+    let sibling = container.nextElementSibling;
+    while (sibling) {
+      if (sibling.classList.contains(SUGGESTIONS_CLASS)) return sibling;
+      sibling = sibling.nextElementSibling;
+    }
+    // Legacy fallback: inside container
+    return container.querySelector(`.${SUGGESTIONS_CLASS}`);
+  }
+
   function createSuggestionsContainer(container, commentId) {
-    // Remove any existing suggestions
-    const existing = container.querySelector(`.${SUGGESTIONS_CLASS}`);
+    // Remove any existing suggestions for this comment
+    const existing = findExistingSuggestions(container, commentId);
     if (existing) existing.remove();
 
     const el = document.createElement('div');
     el.className = SUGGESTIONS_CLASS;
     el.dataset.commentId = commentId;
+    el._commentContainer = container; // Store ref for regeneration
     el.innerHTML = createSkeletonHTML();
 
-    // Insert in the best position
-    const { parent, after } = findInsertionPoint(container);
-    if (after) {
-      insertAfter(el, after);
-    } else {
-      parent.appendChild(el);
+    // Insert as SIBLING after the comment container.
+    // This avoids overflow:hidden clipping from YouTube Studio's comment elements.
+    try {
+      container.after(el);
+    } catch {
+      // Fallback: try parentNode.insertBefore
+      if (container.parentNode) {
+        container.parentNode.insertBefore(el, container.nextSibling);
+      } else {
+        // Last resort: append inside container
+        container.appendChild(el);
+      }
     }
 
     return el;
@@ -622,7 +655,7 @@
 
   async function regenerate(wrapper, container) {
     if (!container) {
-      container = wrapper.parentElement;
+      container = wrapper._commentContainer || wrapper.previousElementSibling || wrapper.parentElement;
     }
     if (!container) return;
 
@@ -678,10 +711,14 @@
             if (replyText.trim().length > 5) {
               sendMessage({ type: 'RECORD_REPLY', replyText: replyText.trim() });
             }
-            const suggestions = scope.querySelector(`.${SUGGESTIONS_CLASS}`);
-            if (suggestions) {
-              suggestions.classList.add(`${NAMESPACE}-posted`);
-              setTimeout(() => suggestions.remove(), 300);
+            // Find suggestions: check inside scope AND as next sibling (new layout)
+            let suggestionsEl = scope.querySelector(`.${SUGGESTIONS_CLASS}`);
+            if (!suggestionsEl) {
+              suggestionsEl = findExistingSuggestions(scope, null);
+            }
+            if (suggestionsEl) {
+              suggestionsEl.classList.add(`${NAMESPACE}-posted`);
+              setTimeout(() => suggestionsEl.remove(), 300);
             }
             break;
           }
