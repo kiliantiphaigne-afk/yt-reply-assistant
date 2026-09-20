@@ -3,6 +3,50 @@
    Inline suggestion cards — blends with YouTube Studio dark theme
    ========================================================================== */
 
+/* ---------- Bouton Generer ---------- */
+
+.yt-reply-assistant-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 8px 0 4px 54px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #272727;
+  background: #161616;
+  color: #909090;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  transition: border-color 150ms, background 150ms, color 150ms;
+}
+
+.yt-reply-assistant-trigger:hover {
+  border-color: #3ea6ff;
+  background: rgba(62, 166, 255, 0.06);
+  color: #3ea6ff;
+}
+
+.yt-reply-assistant-trigger:active {
+  transform: scale(0.97);
+}
+
+/* Light theme */
+html:not([dark]) .yt-reply-assistant-trigger,
+:not([dark]) .yt-reply-assistant-trigger {
+  background: #f5f5f5;
+  border-color: #ddd;
+  color: #666;
+}
+
+html:not([dark]) .yt-reply-assistant-trigger:hover,
+:not([dark]) .yt-reply-assistant-trigger:hover {
+  border-color: #065fd4;
+  background: rgba(6, 95, 212, 0.06);
+  color: #065fd4;
+}
+
 /* ---------- Container ---------- */
 
 .yt-reply-assistant-suggestions {

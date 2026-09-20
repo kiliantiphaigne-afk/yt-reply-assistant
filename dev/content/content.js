@@ -1,7 +1,8 @@
 // =============================================================================
-// YT Reply Assistant — Content Script (Redesign v2)
+// YT Reply Assistant — Content Script (v3 — bouton Generer)
 // Injecte dans studio.youtube.com
-// Detecte les commentaires non repondus, affiche des suggestions en cards
+// Affiche un bouton "Generer" sur chaque commentaire non repondu.
+// Au clic, genere 3 suggestions en cards.
 // =============================================================================
 
 (function () {
@@ -10,7 +11,7 @@
   const NAMESPACE = 'yt-reply-assistant';
   const PROCESSED_ATTR = `data-${NAMESPACE}-processed`;
   const SUGGESTIONS_CLASS = `${NAMESPACE}-suggestions`;
-  const DEBOUNCE_MS = 600;
+  const TRIGGER_CLASS = `${NAMESPACE}-trigger`;
 
   const SUGGESTION_TYPES = [
     'Reponse directe + question de relance',
@@ -36,8 +37,7 @@
   }
 
   function deepQuery(root, selector) {
-    const results = deepQueryAll(root, selector);
-    return results[0] || null;
+    return deepQueryAll(root, selector)[0] || null;
   }
 
   function findElement(parent, selectors) {
@@ -100,9 +100,7 @@
           let parent = btn.parentElement;
           for (let i = 0; i < 8; i++) {
             if (!parent || parent === document.body) break;
-            if (parent.offsetHeight > 50 && parent.offsetHeight < 600) {
-              return parent;
-            }
+            if (parent.offsetHeight > 50 && parent.offsetHeight < 600) return parent;
             parent = parent.parentElement;
           }
           return null;
@@ -115,12 +113,8 @@
 
   function getCommentText(container) {
     const selectors = [
-      '#content-text',
-      '#plain-text',
-      'yt-formatted-string#content-text',
-      '.comment-text',
-      '[class*="comment-text"]',
-      '[class*="comment-content"]',
+      '#content-text', '#plain-text', 'yt-formatted-string#content-text',
+      '.comment-text', '[class*="comment-text"]', '[class*="comment-content"]',
     ];
     const el = findElement(container, selectors);
     if (el) return el.textContent.trim();
@@ -130,49 +124,35 @@
     let node;
     while ((node = walker.nextNode())) {
       const text = node.textContent.trim();
-      if (text.length > 20) {
-        textNodes.push({ text, node });
-      }
+      if (text.length > 20) textNodes.push({ text, node });
     }
     textNodes.sort((a, b) => b.text.length - a.text.length);
     return textNodes[0]?.text || '';
   }
 
   function getCommentAuthor(container) {
-    const selectors = [
-      '#author-text',
-      '.author-text',
-      '#name #text',
-      'a.author-name',
-      '[class*="author"]',
-    ];
-    const el = findElement(container, selectors);
+    const el = findElement(container, [
+      '#author-text', '.author-text', '#name #text',
+      'a.author-name', '[class*="author"]',
+    ]);
     return el ? el.textContent.trim() : 'Un viewer';
   }
 
   function hasOwnerReply(container) {
     const badges = findElements(container, [
-      '#author-comment-badge',
-      'ytcp-author-comment-badge',
-      '.owner-badge',
-      '[class*="creator-badge"]',
-      '[class*="owner"]',
+      '#author-comment-badge', 'ytcp-author-comment-badge',
+      '.owner-badge', '[class*="creator-badge"]', '[class*="owner"]',
     ]);
     for (const badge of badges) {
       const inReply = badge.closest('[class*="repl"]') ||
-        badge.closest('#replies') ||
-        badge.closest('[id*="repl"]');
+        badge.closest('#replies') || badge.closest('[id*="repl"]');
       if (inReply) return true;
     }
     const replySection = findElement(container, [
-      '#replies',
-      '#loaded-replies',
-      '[class*="replies"]',
+      '#replies', '#loaded-replies', '[class*="replies"]',
     ]);
-    if (replySection) {
-      if (findElement(replySection, ['[class*="badge"]', '[class*="creator"]'])) {
-        return true;
-      }
+    if (replySection && findElement(replySection, ['[class*="badge"]', '[class*="creator"]'])) {
+      return true;
     }
     return false;
   }
@@ -193,13 +173,9 @@
   function extractVideoId() {
     const urlMatch = window.location.pathname.match(/\/video\/([^/]+)/);
     if (urlMatch) return urlMatch[1];
-    const link = findElement(document, [
-      'a[href*="/video/"]',
-      '[class*="video-title"] a',
-    ]);
+    const link = findElement(document, ['a[href*="/video/"]', '[class*="video-title"] a']);
     if (link) {
-      const href = link.getAttribute('href') || '';
-      const match = href.match(/\/video\/([^/]+)/);
+      const match = (link.getAttribute('href') || '').match(/\/video\/([^/]+)/);
       if (match) return match[1];
     }
     return null;
@@ -231,6 +207,30 @@
   }
 
   // -------------------------------------------------------------------------
+  // Bouton "Generer" — injecte sur chaque commentaire
+  // -------------------------------------------------------------------------
+
+  function injectTriggerButton(container) {
+    if (container.querySelector(`.${TRIGGER_CLASS}`)) return;
+
+    const commentId = getCommentId(container);
+    if (!commentId) return;
+
+    const btn = document.createElement('button');
+    btn.className = TRIGGER_CLASS;
+    btn.innerHTML = '💬 Generer';
+    btn.title = 'Generer des suggestions de reponse IA';
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      btn.remove();
+      generateForContainer(container, true);
+    });
+
+    container.appendChild(btn);
+  }
+
+  // -------------------------------------------------------------------------
   // Suggestion UI — Cards layout
   // -------------------------------------------------------------------------
 
@@ -241,7 +241,6 @@
     el.className = SUGGESTIONS_CLASS;
     el.dataset.commentId = commentId;
 
-    // Loading state with skeleton cards
     el.innerHTML = `
       <div class="${NAMESPACE}-loading">
         <div class="${NAMESPACE}-loading-label">
@@ -294,37 +293,22 @@
     `;
     wrapper.appendChild(label);
 
-    // Regen handler
     label.querySelector(`.${NAMESPACE}-regen`).addEventListener('click', (e) => {
       e.stopPropagation();
       regenerate(wrapper);
     });
 
-    // Dismiss handler
     label.querySelector(`.${NAMESPACE}-dismiss-btn`).addEventListener('click', (e) => {
       e.stopPropagation();
-      sendMessage({ type: 'DISMISS_COMMENT', commentId });
       const container = wrapper.parentElement;
       wrapper.remove();
-      // Add dismissed hint
-      const hint = document.createElement('div');
-      hint.className = `${NAMESPACE}-dismissed`;
-      hint.innerHTML = `
-        <span>Suggestions masquees</span>
-        <span>·</span>
-        <button class="${NAMESPACE}-restore-btn">Reafficher</button>
-      `;
-      hint.querySelector(`.${NAMESPACE}-restore-btn`).addEventListener('click', () => {
-        hint.remove();
-        generateForContainer(container, true);
-      });
-      container.appendChild(hint);
+      // Re-inject the trigger button so they can generate again
+      injectTriggerButton(container);
     });
 
     // Cards list
     const list = document.createElement('div');
     list.className = `${NAMESPACE}-list`;
-
     const cards = [];
 
     suggestions.forEach((text, i) => {
@@ -359,18 +343,15 @@
       card.appendChild(content);
       card.appendChild(insertBtn);
 
-      // Click on card or button inserts
       const handleInsert = (e) => {
         e.stopPropagation();
         insertReply(wrapper.parentElement, text);
 
-        // Mark as inserted
         card.classList.add('inserted');
         num.textContent = '✓';
         typeEl.textContent = '✓ Inseree dans le champ de reponse';
         insertBtn.textContent = 'Inseree';
 
-        // Dim other cards
         cards.forEach((c) => {
           if (c !== card) c.classList.add('dimmed');
         });
@@ -385,7 +366,6 @@
 
     wrapper.appendChild(list);
 
-    // Provider badge
     if (providerName && providerName !== 'chrome-ai') {
       const badge = document.createElement('span');
       badge.className = `${NAMESPACE}-provider-badge`;
@@ -396,6 +376,7 @@
 
   function renderError(wrapper, msg) {
     if (!wrapper) return;
+    const container = wrapper.parentElement;
     wrapper.innerHTML = `
       <div class="${NAMESPACE}-label">
         <span class="${NAMESPACE}-label-text">💬 Suggestions IA</span>
@@ -419,24 +400,18 @@
     if (!container) return;
 
     const replyBtn = findElement(container, [
-      '#reply-button button',
-      '#reply-button',
-      'button[aria-label*="reply" i]',
-      'button[aria-label*="reponse" i]',
-      'button[aria-label*="réponse" i]',
-      'button[aria-label*="répondre" i]',
+      '#reply-button button', '#reply-button',
+      'button[aria-label*="reply" i]', 'button[aria-label*="reponse" i]',
+      'button[aria-label*="réponse" i]', 'button[aria-label*="répondre" i]',
       '[class*="reply-button"]',
     ]);
     if (replyBtn) replyBtn.click();
 
     setTimeout(() => {
       const input = findElement(container, [
-        '#contenteditable-root',
-        '[contenteditable="true"]',
-        'div[aria-label*="reply" i]',
-        'div[aria-label*="reponse" i]',
-        'div[aria-label*="réponse" i]',
-        'div[aria-label*="répondre" i]',
+        '#contenteditable-root', '[contenteditable="true"]',
+        'div[aria-label*="reply" i]', 'div[aria-label*="reponse" i]',
+        'div[aria-label*="réponse" i]', 'div[aria-label*="répondre" i]',
         'textarea',
       ]);
 
@@ -451,10 +426,8 @@
         input.dispatchEvent(new Event('change', { bubbles: true }));
         input.dispatchEvent(
           new InputEvent('input', {
-            bubbles: true,
-            cancelable: true,
-            inputType: 'insertText',
-            data: text,
+            bubbles: true, cancelable: true,
+            inputType: 'insertText', data: text,
           })
         );
       }
@@ -471,11 +444,6 @@
 
     const commentId = getCommentId(container);
     if (!commentId) return;
-
-    if (!force) {
-      const { dismissed } = await sendMessage({ type: 'IS_DISMISSED', commentId });
-      if (dismissed) return;
-    }
 
     const wrapper = createSuggestionsContainer(container, commentId);
     if (!wrapper) return;
@@ -566,9 +534,7 @@
         for (let i = 0; i < 5; i++) {
           if (!scope) break;
           const input = findElement(scope, [
-            '#contenteditable-root',
-            '[contenteditable="true"]',
-            'textarea',
+            '#contenteditable-root', '[contenteditable="true"]', 'textarea',
           ]);
           if (input) {
             const replyText = input.value || input.textContent || '';
@@ -590,37 +556,8 @@
   }
 
   // -------------------------------------------------------------------------
-  // Detection + Intersection Observer
+  // Scan : injecte un bouton "Generer" sur chaque commentaire non repondu
   // -------------------------------------------------------------------------
-
-  let observer = null;
-  const pending = new Map();
-
-  function setupObserver() {
-    observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const el = entry.target;
-          if (entry.isIntersecting) {
-            if (!pending.has(el)) {
-              const t = setTimeout(() => {
-                pending.delete(el);
-                generateForContainer(el);
-              }, DEBOUNCE_MS);
-              pending.set(el, t);
-            }
-          } else {
-            const t = pending.get(el);
-            if (t) {
-              clearTimeout(t);
-              pending.delete(el);
-            }
-          }
-        }
-      },
-      { threshold: 0.3 }
-    );
-  }
 
   function scanComments() {
     const containers = findCommentContainers();
@@ -635,7 +572,7 @@
       const text = getCommentText(c);
       if (!text || text.length < 5) continue;
 
-      if (observer) observer.observe(c);
+      injectTriggerButton(c);
       newCount++;
     }
 
@@ -665,15 +602,12 @@
     if (msg.type === 'SCRAPE_REPLIES') {
       const ownerReplies = [];
       const allElements = findElements(document, [
-        'ytcp-comment',
-        '[class*="comment"]',
+        'ytcp-comment', '[class*="comment"]',
       ]);
       for (const el of allElements) {
         const badge = findElement(el, [
-          '#author-comment-badge',
-          'ytcp-author-comment-badge',
-          '[class*="owner"]',
-          '[class*="creator-badge"]',
+          '#author-comment-badge', 'ytcp-author-comment-badge',
+          '[class*="owner"]', '[class*="creator-badge"]',
         ]);
         if (badge) {
           const text = getCommentText(el);
@@ -710,7 +644,6 @@
 
     console.log('[YT Reply Assistant] Actif sur', window.location.href);
 
-    setupObserver();
     watchDOM();
     watchForReplies();
 
