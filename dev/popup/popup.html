@@ -11,37 +11,37 @@
 
     <!-- ===== Onboarding ===== -->
     <div id="onboarding" class="view" style="display: none;">
-      <div class="header">
-        <div class="logo">💬</div>
-        <h1>YT Reply Assistant</h1>
-        <p class="subtitle">Suggestions de reponses IA pour tes commentaires YouTube</p>
+
+      <!-- Header -->
+      <div class="header-bar">
+        <div class="header-left">
+          <div class="logo-icon">💬</div>
+          <div>
+            <div class="header-title">YT Reply Assistant</div>
+            <div class="header-sub">Extension YouTube Studio</div>
+          </div>
+        </div>
       </div>
 
-      <div class="onboarding-steps">
-        <!-- Etape 1 : Bienvenue -->
-        <div id="step-welcome" class="step active">
-          <p>Je vais analyser ton style de reponse pour generer des suggestions personnalisees.</p>
-          <div class="info-box">
-            <strong>Comment ca marche :</strong>
-            <ul>
-              <li>Analyse de tes reponses passees pour capter ton ton</li>
-              <li>Recuperation du transcript de la video pour le contexte</li>
-              <li>3 suggestions par commentaire, directement dans YouTube Studio</li>
-              <li>Tout reste en local — aucune donnee ne quitte ton navigateur</li>
-            </ul>
+      <div class="separator"></div>
+
+      <!-- Corps onboarding -->
+      <div class="onboarding-body">
+        <div class="onboarding-welcome">
+          <div class="welcome-title">Apprenons votre style</div>
+          <div class="welcome-desc">
+            Collez quelques-unes de vos reponses habituelles. L'IA s'en inspire pour generer des suggestions qui vous ressemblent vraiment.
           </div>
-          <p class="muted" style="margin-bottom: 4px;">Colle 5 a 10 de tes reponses typiques (une par ligne) :</p>
-          <textarea id="manual-replies" rows="6" placeholder="Merci pour ton retour ! C'est exactement le genre de cas que j'aborde dans ma prochaine video...&#10;&#10;Super question ! En fait ca depend de ton contexte. Tu es plutot court terme ou long terme ?&#10;&#10;Ahah je comprends tellement ! L'important c'est de commencer petit 💪"></textarea>
-          <button id="btn-analyze" class="btn primary full">
-            Analyser mon style
-          </button>
-          <button id="btn-skip" class="btn ghost full">
-            Passer — je configurerai plus tard
-          </button>
         </div>
 
-        <!-- Etape 2 : Analyse en cours -->
-        <div id="step-analyzing" class="step" style="display: none;">
+        <div class="textarea-wrap">
+          <textarea id="manual-replies" class="popup-input" rows="5"
+            placeholder="Ex : Merci pour ce super commentaire ! Je lis tous vos retours...&#10;&#10;Collez 3 a 10 de vos vraies reponses, separees par des lignes vides."></textarea>
+          <div id="char-count" class="char-count">0 / 2000</div>
+        </div>
+
+        <!-- Etape analyse en cours (cachee) -->
+        <div id="step-analyzing" style="display: none;">
           <div class="progress-section">
             <div class="spinner"></div>
             <p id="analysis-status">Analyse en cours...</p>
@@ -51,107 +51,162 @@
           </div>
         </div>
 
-        <!-- Etape 3 : Resultat -->
-        <div id="step-result" class="step" style="display: none;">
+        <!-- Etape resultat (cachee) -->
+        <div id="step-result" style="display: none;">
           <div class="result-card">
-            <h3>Style detecte ✓</h3>
-            <p id="style-summary"></p>
+            <div class="result-title">Style detecte ✓</div>
+            <p id="style-summary" class="result-text"></p>
           </div>
-          <button id="btn-complete" class="btn primary full">
-            C'est parti !
-          </button>
         </div>
+
+        <button id="btn-analyze" class="btn-primary">Analyser mon style</button>
+        <button id="btn-skip" class="btn-ghost">Passer cette etape</button>
+        <button id="btn-complete" class="btn-primary" style="display: none;">C'est parti !</button>
+      </div>
+
+      <!-- Footer onboarding -->
+      <div class="footer-onboarding">
+        <div class="dot"></div>
+        <div class="dot active"></div>
+        <span class="footer-text">100% local</span>
       </div>
     </div>
 
     <!-- ===== Parametres ===== -->
     <div id="settings" class="view" style="display: none;">
-      <div class="header compact">
-        <h1>YT Reply Assistant</h1>
-        <span id="version" class="version">v0.1.0</span>
+
+      <!-- Header compact -->
+      <div class="header-bar compact">
+        <div class="header-left">
+          <div class="logo-icon small">💬</div>
+          <div class="header-title">YT Reply Assistant</div>
+          <div id="active-badge" class="status-badge green">
+            <div class="status-dot green"></div>
+            <span>Actif</span>
+          </div>
+        </div>
       </div>
 
-      <!-- Etat -->
-      <section class="section" id="status-section">
-        <div id="active-status" class="status-bar">
-          <span class="status-dot green"></span>
-          <span>Actif sur YouTube Studio</span>
-        </div>
-      </section>
+      <!-- Corps settings -->
+      <div class="settings-body">
 
-      <!-- Provider IA -->
-      <section class="section">
-        <h2>Provider IA</h2>
-        <div class="setting-row">
-          <label for="provider-select">Provider actif</label>
-          <select id="provider-select">
-            <option value="chrome-ai">Chrome IA integree (gratuit)</option>
-            <option value="anthropic">Anthropic — Claude Haiku</option>
-            <option value="openai">OpenAI — GPT-4o mini</option>
-          </select>
-        </div>
+        <!-- CARD 1 : Provider IA -->
+        <div class="section-card">
+          <div class="section-label">Provider IA</div>
 
-        <div id="chrome-ai-status" class="provider-status">
-          <span id="chrome-ai-indicator" class="status-dot"></span>
-          <span id="chrome-ai-text">Verification...</span>
-        </div>
-
-        <div id="anthropic-config" class="provider-config" style="display: none;">
-          <div class="setting-row">
-            <label for="anthropic-key">Cle API</label>
-            <div class="input-with-action">
-              <input type="password" id="anthropic-key" placeholder="sk-ant-...">
-              <button id="btn-test-anthropic" class="btn small">Tester</button>
+          <!-- Chrome AI -->
+          <div class="provider-card selected" data-provider="chrome-ai">
+            <div class="provider-left">
+              <div class="radio-dot selected">
+                <div class="radio-inner"></div>
+              </div>
+              <div>
+                <div class="provider-name">
+                  Chrome AI
+                  <span class="tag green">Gratuit</span>
+                </div>
+                <div class="provider-desc">Gemini Nano · Tourne localement</div>
+              </div>
+            </div>
+            <div class="provider-status" id="chrome-ai-status">
+              <div class="status-dot"></div>
+              <span>Verification...</span>
             </div>
           </div>
-          <div id="anthropic-status" class="provider-status" style="display: none;"></div>
-          <p class="muted" style="margin-top: 6px;">~0.25€ pour 1000 reponses generees. <a href="https://console.anthropic.com/settings/keys" target="_blank">Obtenir une cle</a></p>
-        </div>
 
-        <div id="openai-config" class="provider-config" style="display: none;">
-          <div class="setting-row">
-            <label for="openai-key">Cle API</label>
-            <div class="input-with-action">
-              <input type="password" id="openai-key" placeholder="sk-...">
-              <button id="btn-test-openai" class="btn small">Tester</button>
+          <!-- Anthropic -->
+          <div class="provider-card" data-provider="anthropic">
+            <div class="provider-left">
+              <div class="radio-dot">
+                <div class="radio-inner"></div>
+              </div>
+              <div>
+                <div class="provider-name">
+                  Claude (Anthropic)
+                  <span class="tag muted">~0.25€/1 000</span>
+                </div>
+                <div class="provider-desc">claude-haiku-4.5 · Requiert une cle API</div>
+              </div>
+            </div>
+            <div class="provider-status" id="anthropic-badge">
+              <div class="status-dot"></div>
+              <span>Non configure</span>
             </div>
           </div>
-          <div id="openai-status" class="provider-status" style="display: none;"></div>
-        </div>
-      </section>
 
-      <!-- Style de reponse -->
-      <section class="section">
-        <h2>Style de reponse</h2>
-        <div id="style-info">
-          <p id="style-info-text" class="muted">Chargement...</p>
-        </div>
-        <div style="display: flex; gap: 6px; margin-top: 8px;">
-          <button id="btn-reanalyze" class="btn ghost" style="flex: 1;">Re-analyser</button>
-          <button id="btn-edit-style" class="btn ghost" style="flex: 1;">Modifier les exemples</button>
-        </div>
-        <div id="edit-style-panel" style="display: none; margin-top: 8px;">
-          <textarea id="edit-replies" rows="5" placeholder="Colle tes reponses typiques ici (une par ligne)..."></textarea>
-          <button id="btn-save-style" class="btn primary full">Sauvegarder</button>
-        </div>
-      </section>
+          <!-- OpenAI -->
+          <div class="provider-card" data-provider="openai">
+            <div class="provider-left">
+              <div class="radio-dot">
+                <div class="radio-inner"></div>
+              </div>
+              <div>
+                <div class="provider-name">
+                  GPT-4o mini (OpenAI)
+                  <span class="tag muted">~0.20€/1 000</span>
+                </div>
+                <div class="provider-desc">gpt-4o-mini · Requiert une cle API</div>
+              </div>
+            </div>
+            <div class="provider-status" id="openai-badge">
+              <div class="status-dot"></div>
+              <span>Non configure</span>
+            </div>
+          </div>
 
-      <!-- Cache transcript -->
-      <section class="section">
-        <h2>Cache des transcripts</h2>
-        <p id="cache-info" class="muted">Chargement...</p>
-        <button id="btn-clear-cache" class="btn ghost full">Vider le cache</button>
-      </section>
+          <!-- Zone cle API (cachee par defaut) -->
+          <div id="api-key-zone" style="display: none;">
+            <div class="api-key-label" id="api-key-label">Cle API</div>
+            <div class="api-key-row">
+              <input type="password" id="api-key-input" class="popup-input" placeholder="sk-...">
+              <button id="btn-test-key" class="btn-outline">Tester</button>
+            </div>
+            <div id="api-key-status" class="conn-status" style="display: none;"></div>
+            <div id="api-key-help" class="api-help"></div>
+          </div>
+        </div>
 
-      <!-- A propos -->
-      <section class="section about">
-        <p class="muted">YT Reply Assistant v0.1.0</p>
-        <p class="muted">100% local — tes donnees ne quittent jamais ton navigateur</p>
-      </section>
+        <!-- CARD 2 : Mon style -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-label">Mon style</div>
+            <button id="btn-edit-style" class="btn-outline">Modifier</button>
+          </div>
+
+          <div id="style-tags" class="style-tags">
+            <span class="tag blue" id="style-loading">Chargement...</span>
+          </div>
+          <div id="style-count" class="style-count"></div>
+
+          <!-- Panel edition (cache) -->
+          <div id="edit-style-panel" style="display: none;">
+            <textarea id="edit-replies" class="popup-input" rows="4"
+              placeholder="Collez vos reponses typiques ici (une par ligne)..."></textarea>
+            <button id="btn-save-style" class="btn-primary" style="margin-top: 8px;">Sauvegarder</button>
+          </div>
+        </div>
+
+        <!-- CARD 3 : Cache -->
+        <div class="section-card">
+          <div class="cache-row">
+            <div>
+              <div class="section-label">Cache</div>
+              <div id="cache-info" class="cache-detail">Chargement...</div>
+            </div>
+            <button id="btn-clear-cache" class="btn-danger">Vider</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="footer-settings">
+        <span id="version">v0.2.0</span>
+        <span>100% local · Aucune donnee envoyee</span>
+      </div>
     </div>
 
   </div>
-
   <script src="popup.js"></script>
 </body>
 </html>

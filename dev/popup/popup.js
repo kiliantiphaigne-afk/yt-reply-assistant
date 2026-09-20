@@ -1,8 +1,9 @@
 // =============================================================================
-// YT Reply Assistant — Popup (parametres + onboarding)
+// YT Reply Assistant — Popup (parametres + onboarding) — Redesign v2
 // =============================================================================
 
 const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
 
 function sendBg(msg) {
   return new Promise((resolve) => {
@@ -37,11 +38,22 @@ function showOnboarding() {
   $('#onboarding').style.display = 'block';
   $('#settings').style.display = 'none';
 
-  // Bouton principal : analyser depuis le texte colle
+  const textarea = $('#manual-replies');
+  const charCount = $('#char-count');
+
+  textarea.addEventListener('input', () => {
+    const len = textarea.value.length;
+    charCount.textContent = `${len} / 2000`;
+    if (len > 2000) {
+      textarea.value = textarea.value.slice(0, 2000);
+      charCount.textContent = '2000 / 2000';
+    }
+  });
+
   $('#btn-analyze').addEventListener('click', async () => {
-    const text = $('#manual-replies').value.trim();
+    const text = textarea.value.trim();
     if (!text) {
-      alert('Colle au moins quelques reponses pour que je puisse analyser ton style.');
+      alert('Collez au moins quelques reponses pour analyser votre style.');
       return;
     }
 
@@ -51,16 +63,14 @@ function showOnboarding() {
       .filter((l) => l.length > 5);
 
     if (replies.length < 3) {
-      alert('Il me faut au moins 3 reponses (une par ligne) pour une bonne analyse.');
+      alert('Il faut au moins 3 reponses (une par ligne) pour une bonne analyse.');
       return;
     }
 
     await analyzeReplies(replies);
   });
 
-  // Bouton skip : passer avec un profil par defaut
   $('#btn-skip').addEventListener('click', async () => {
-    // Creer un profil minimal par defaut
     await sendBg({
       type: 'BUILD_STYLE_PROFILE',
       replies: [
@@ -76,7 +86,6 @@ function showOnboarding() {
     showSettings();
   });
 
-  // Bouton terminé
   $('#btn-complete').addEventListener('click', async () => {
     await sendBg({ type: 'COMPLETE_ONBOARDING' });
     chrome.action.setBadgeText({ text: '' });
@@ -85,7 +94,8 @@ function showOnboarding() {
 }
 
 async function analyzeReplies(replies) {
-  $('#step-welcome').style.display = 'none';
+  $('#btn-analyze').style.display = 'none';
+  $('#btn-skip').style.display = 'none';
   $('#step-analyzing').style.display = 'block';
   $('#analysis-status').textContent = 'Construction du profil de style...';
   $('#progress-fill').style.width = '60%';
@@ -106,85 +116,43 @@ async function analyzeReplies(replies) {
     $('#step-analyzing').style.display = 'none';
     $('#step-result').style.display = 'block';
     $('#style-summary').textContent = profile.summary || 'Profil de style construit !';
+    $('#btn-complete').style.display = 'block';
   }, 400);
 }
 
 // ---------------------------------------------------------------------------
-// Parametres
+// Settings
 // ---------------------------------------------------------------------------
+
+let currentProvider = 'chrome-ai';
 
 async function showSettings() {
   $('#onboarding').style.display = 'none';
   $('#settings').style.display = 'block';
 
   const settings = await sendBg({ type: 'GET_SETTINGS' });
+  currentProvider = settings.provider || 'chrome-ai';
 
-  // Provider
-  const select = $('#provider-select');
-  select.value = settings.provider || 'chrome-ai';
-  updateProviderUI(select.value);
+  // Setup provider cards
+  setupProviderCards(settings);
 
-  select.addEventListener('change', async () => {
-    await sendBg({ type: 'SAVE_SETTINGS', settings: { provider: select.value } });
-    updateProviderUI(select.value);
-  });
-
-  // Cles API
-  $('#anthropic-key').value = settings.anthropicKey || '';
-  $('#openai-key').value = settings.openaiKey || '';
-
-  $('#anthropic-key').addEventListener('blur', async () => {
-    await sendBg({
-      type: 'SAVE_SETTINGS',
-      settings: { anthropicKey: $('#anthropic-key').value },
-    });
-  });
-
-  $('#openai-key').addEventListener('blur', async () => {
-    await sendBg({
-      type: 'SAVE_SETTINGS',
-      settings: { openaiKey: $('#openai-key').value },
-    });
-  });
-
-  // Test providers
-  $('#btn-test-anthropic').addEventListener('click', () =>
-    testProvider('anthropic', $('#anthropic-key').value, '#anthropic-status')
-  );
-  $('#btn-test-openai').addEventListener('click', () =>
-    testProvider('openai', $('#openai-key').value, '#openai-status')
-  );
-
+  // Load data
   checkChromeAI();
+  checkApiProviders(settings);
   loadStyleInfo();
   loadCacheInfo();
 
-  // Re-analyser
-  $('#btn-reanalyze').addEventListener('click', async () => {
-    const info = await sendBg({ type: 'GET_STYLE_INFO' });
-    if (info.replyCount > 0) {
-      $('#btn-reanalyze').textContent = 'Re-analyse...';
-      $('#btn-reanalyze').disabled = true;
-      // Rebuild from stored replies
-      const { styleReplies = [] } = await chrome.storage.local.get('styleReplies');
-      if (styleReplies.length >= 3) {
-        await sendBg({ type: 'BUILD_STYLE_PROFILE', replies: styleReplies });
-      }
-      await loadStyleInfo();
-      $('#btn-reanalyze').textContent = 'Fait ✓';
-      setTimeout(() => {
-        $('#btn-reanalyze').textContent = 'Re-analyser';
-        $('#btn-reanalyze').disabled = false;
-      }, 1500);
-    } else {
-      alert('Aucune reponse en memoire. Utilise "Modifier les exemples" pour en ajouter.');
-    }
-  });
-
-  // Modifier les exemples
+  // Edit style
   $('#btn-edit-style').addEventListener('click', () => {
     const panel = $('#edit-style-panel');
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    const btn = $('#btn-edit-style');
+    if (panel.style.display === 'none') {
+      panel.style.display = 'block';
+      btn.textContent = 'Annuler';
+    } else {
+      panel.style.display = 'none';
+      btn.textContent = 'Modifier';
+    }
   });
 
   $('#btn-save-style').addEventListener('click', async () => {
@@ -195,13 +163,18 @@ async function showSettings() {
       alert('Il faut au moins 3 reponses.');
       return;
     }
+    $('#btn-save-style').textContent = 'Analyse...';
+    $('#btn-save-style').disabled = true;
     await sendBg({ type: 'BUILD_STYLE_PROFILE', replies });
     await loadStyleInfo();
     $('#edit-style-panel').style.display = 'none';
+    $('#btn-edit-style').textContent = 'Modifier';
+    $('#btn-save-style').textContent = 'Sauvegarder';
+    $('#btn-save-style').disabled = false;
     $('#edit-replies').value = '';
   });
 
-  // Vider le cache
+  // Clear cache
   $('#btn-clear-cache').addEventListener('click', async () => {
     const result = await sendBg({ type: 'CLEAR_CACHE' });
     $('#cache-info').textContent = result.removed + ' videos supprimees du cache.';
@@ -209,48 +182,221 @@ async function showSettings() {
   });
 }
 
-function updateProviderUI(provider) {
-  $('#chrome-ai-status').style.display = provider === 'chrome-ai' ? 'flex' : 'none';
-  $('#anthropic-config').style.display = provider === 'anthropic' ? 'block' : 'none';
-  $('#openai-config').style.display = provider === 'openai' ? 'block' : 'none';
+// ---------------------------------------------------------------------------
+// Provider cards
+// ---------------------------------------------------------------------------
+
+function setupProviderCards(settings) {
+  const cards = $$('.provider-card');
+
+  // Select the current provider
+  selectProviderCard(currentProvider);
+
+  // Click handlers
+  cards.forEach((card) => {
+    card.addEventListener('click', async () => {
+      const provider = card.dataset.provider;
+      currentProvider = provider;
+      selectProviderCard(provider);
+      await sendBg({ type: 'SAVE_SETTINGS', settings: { provider } });
+    });
+  });
+
+  // Pre-fill keys
+  if (settings.anthropicKey) {
+    $('#api-key-input').value = settings.anthropicKey;
+  }
+
+  // Test button
+  $('#btn-test-key').addEventListener('click', async () => {
+    const key = $('#api-key-input').value.trim();
+    if (!key) return;
+
+    const statusEl = $('#api-key-status');
+    statusEl.style.display = 'flex';
+    statusEl.className = 'conn-status testing';
+    statusEl.textContent = 'Test en cours...';
+
+    const result = await sendBg({
+      type: 'TEST_PROVIDER',
+      provider: currentProvider,
+      apiKey: key,
+    });
+
+    if (result.ok) {
+      statusEl.className = 'conn-status ok';
+      statusEl.innerHTML = '✓ Connexion OK';
+
+      // Save key
+      const keyField = currentProvider === 'anthropic' ? 'anthropicKey' : 'openaiKey';
+      await sendBg({ type: 'SAVE_SETTINGS', settings: { [keyField]: key } });
+
+      // Update badge
+      const badgeId = currentProvider === 'anthropic' ? '#anthropic-badge' : '#openai-badge';
+      setBadge(badgeId, 'connected', 'Connecte');
+    } else {
+      statusEl.className = 'conn-status error';
+      statusEl.textContent = '✕ ' + (result.error || 'Echec de connexion');
+    }
+  });
 }
+
+function selectProviderCard(providerName) {
+  // Reset all cards
+  $$('.provider-card').forEach((card) => {
+    card.classList.remove('selected');
+    const dot = card.querySelector('.radio-dot');
+    if (dot) {
+      dot.classList.remove('selected');
+    }
+  });
+
+  // Select the target
+  const target = $(`.provider-card[data-provider="${providerName}"]`);
+  if (target) {
+    target.classList.add('selected');
+    const dot = target.querySelector('.radio-dot');
+    if (dot) {
+      dot.classList.add('selected');
+    }
+  }
+
+  // Show/hide API key zone
+  const apiZone = $('#api-key-zone');
+  const isApiProvider = providerName === 'anthropic' || providerName === 'openai';
+  apiZone.style.display = isApiProvider ? 'block' : 'none';
+
+  if (isApiProvider) {
+    const label = providerName === 'anthropic' ? 'Cle API Anthropic' : 'Cle API OpenAI';
+    const placeholder = providerName === 'anthropic' ? 'sk-ant-api03-...' : 'sk-...';
+    const helpLink = providerName === 'anthropic'
+      ? '<a href="https://console.anthropic.com/settings/keys" target="_blank">Obtenir une cle</a> · ~0.25€/1 000 reponses'
+      : '<a href="https://platform.openai.com/api-keys" target="_blank">Obtenir une cle</a> · ~0.20€/1 000 reponses';
+
+    $('#api-key-label').textContent = label;
+    $('#api-key-input').placeholder = placeholder;
+    $('#api-key-help').innerHTML = helpLink;
+
+    // Load saved key
+    loadSavedKey(providerName);
+  }
+
+  // Reset status
+  $('#api-key-status').style.display = 'none';
+}
+
+async function loadSavedKey(providerName) {
+  const settings = await sendBg({ type: 'GET_SETTINGS' });
+  const key = providerName === 'anthropic' ? settings.anthropicKey : settings.openaiKey;
+  $('#api-key-input').value = key || '';
+}
+
+// ---------------------------------------------------------------------------
+// Provider checks
+// ---------------------------------------------------------------------------
 
 async function checkChromeAI() {
+  const statusEl = $('#chrome-ai-status');
   const result = await sendBg({ type: 'TEST_PROVIDER', provider: 'chrome-ai' });
-  const indicator = $('#chrome-ai-indicator');
-  const text = $('#chrome-ai-text');
   if (result.ok) {
-    indicator.className = 'status-dot green';
-    text.textContent = 'Disponible et pret';
+    setBadge('#chrome-ai-status', 'available', 'Disponible');
   } else {
-    indicator.className = 'status-dot red';
-    text.innerHTML = 'Non disponible. <a href="chrome://flags/#prompt-api-for-gemini-nano" target="_blank">Activer le flag</a> ou configure une cle API ci-dessous.';
+    setBadge('#chrome-ai-status', 'error', 'Non disponible');
   }
 }
 
-async function testProvider(name, key, statusSel) {
-  const el = $(statusSel);
-  el.style.display = 'flex';
-  el.innerHTML = '<span class="status-dot yellow"></span><span>Test en cours...</span>';
-
-  const result = await sendBg({ type: 'TEST_PROVIDER', provider: name, apiKey: key });
-  if (result.ok) {
-    el.innerHTML = '<span class="status-dot green"></span><span>Connexion OK ✓</span>';
-  } else {
-    el.innerHTML = '<span class="status-dot red"></span><span>' + (result.error || 'Echec') + '</span>';
+async function checkApiProviders(settings) {
+  // Anthropic
+  if (settings.anthropicKey) {
+    setBadge('#anthropic-badge', 'connected', 'Connecte');
+  }
+  // OpenAI
+  if (settings.openaiKey) {
+    setBadge('#openai-badge', 'connected', 'Connecte');
   }
 }
+
+function setBadge(selector, status, text) {
+  const el = $(selector);
+  if (!el) return;
+  el.className = `provider-status ${status}`;
+  el.innerHTML = `<div class="status-dot"></div><span>${text}</span>`;
+}
+
+// ---------------------------------------------------------------------------
+// Style info
+// ---------------------------------------------------------------------------
 
 async function loadStyleInfo() {
   const info = await sendBg({ type: 'GET_STYLE_INFO' });
-  if (info.built) {
-    $('#style-info-text').textContent = info.summary + ' | Base sur ' + info.replyCount + ' reponses';
-  } else {
-    $('#style-info-text').textContent = 'Aucun profil de style. Utilise "Modifier les exemples" pour en creer un.';
+  const tagsContainer = $('#style-tags');
+  const countEl = $('#style-count');
+
+  if (!info.built) {
+    tagsContainer.innerHTML = '<span class="tag neutral">Aucun profil</span>';
+    countEl.textContent = 'Utilisez "Modifier" pour creer un profil de style.';
+    return;
   }
+
+  // Parse summary into tags
+  const summary = info.summary || '';
+  const tags = [];
+
+  // Language
+  if (summary.includes('francais')) {
+    tags.push({ text: 'Francais', cls: 'blue', icon: '🇫🇷' });
+  } else if (summary.includes('anglais')) {
+    tags.push({ text: 'English', cls: 'blue', icon: '🇬🇧' });
+  }
+
+  // Style
+  if (summary.includes('tutoiement')) {
+    tags.push({ text: 'Tutoiement', cls: 'neutral' });
+  } else if (summary.includes('vouvoiement')) {
+    tags.push({ text: 'Vouvoiement', cls: 'neutral' });
+  }
+
+  // Length
+  const wordsMatch = summary.match(/~(\d+) mots/);
+  if (wordsMatch) {
+    const words = parseInt(wordsMatch[1]);
+    if (words < 15) tags.push({ text: 'Phrases courtes', cls: 'neutral' });
+    else if (words < 30) tags.push({ text: 'Longueur moyenne', cls: 'neutral' });
+    else tags.push({ text: 'Reponses detaillees', cls: 'neutral' });
+  }
+
+  // Emojis
+  if (summary.includes('Emojis frequents')) {
+    const emojiMatch = summary.match(/\(([^)]+)\)/);
+    tags.push({ text: (emojiMatch ? emojiMatch[1] + ' ' : '') + 'Emojis', cls: 'warm' });
+  } else if (summary.includes('occasionnels')) {
+    tags.push({ text: 'Emojis moderes', cls: 'warm' });
+  } else if (summary.includes("Peu d'emojis")) {
+    tags.push({ text: "Peu d'emojis", cls: 'neutral' });
+  }
+
+  // Tone
+  if (summary.includes('questions')) {
+    tags.push({ text: 'Pose des questions', cls: 'neutral' });
+  }
+  if (summary.includes('enthousiaste')) {
+    tags.push({ text: 'Ton enthousiaste', cls: 'neutral' });
+  }
+
+  // Render tags
+  tagsContainer.innerHTML = tags
+    .map((t) => `<span class="tag ${t.cls}">${t.icon ? t.icon + ' ' : ''}${t.text}</span>`)
+    .join('');
+
+  countEl.textContent = `Base sur ${info.replyCount} reponses analysees`;
 }
+
+// ---------------------------------------------------------------------------
+// Cache info
+// ---------------------------------------------------------------------------
 
 async function loadCacheInfo() {
   const info = await sendBg({ type: 'GET_CACHE_INFO' });
-  $('#cache-info').textContent = info.videoCount + ' videos en cache (' + info.sizeMB + ' Mo)';
+  const el = $('#cache-info');
+  el.innerHTML = `${info.videoCount} videos en cache <span class="cache-size">· ${info.sizeMB} Mo</span>`;
 }

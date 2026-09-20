@@ -1,7 +1,7 @@
 // =============================================================================
-// YT Reply Assistant — Content Script
+// YT Reply Assistant — Content Script (Redesign v2)
 // Injecte dans studio.youtube.com
-// Detecte les commentaires non repondus, affiche des suggestions
+// Detecte les commentaires non repondus, affiche des suggestions en cards
 // =============================================================================
 
 (function () {
@@ -12,24 +12,26 @@
   const SUGGESTIONS_CLASS = `${NAMESPACE}-suggestions`;
   const DEBOUNCE_MS = 600;
 
+  const SUGGESTION_TYPES = [
+    'Reponse directe + question de relance',
+    'Reponse approfondie + lien video',
+    'Reponse courte + micro-question',
+  ];
+
   // -------------------------------------------------------------------------
   // Deep DOM traversal (handles Shadow DOM)
   // -------------------------------------------------------------------------
 
-  /** Recursively find elements across shadow roots */
   function deepQueryAll(root, selector) {
     const results = [];
     try {
       root.querySelectorAll(selector).forEach((el) => results.push(el));
     } catch { /* invalid selector */ }
-
-    // Traverse shadow roots
     root.querySelectorAll('*').forEach((el) => {
       if (el.shadowRoot) {
         results.push(...deepQueryAll(el.shadowRoot, selector));
       }
     });
-
     return results;
   }
 
@@ -38,7 +40,6 @@
     return results[0] || null;
   }
 
-  /** Try multiple selectors, return first match (with shadow DOM support) */
   function findElement(parent, selectors) {
     if (typeof selectors === 'string') selectors = [selectors];
     for (const sel of selectors) {
@@ -65,36 +66,27 @@
 
   // -------------------------------------------------------------------------
   // YouTube Studio comment detection
-  //
-  // YouTube Studio uses custom Polymer elements (ytcp-* prefix).
-  // The DOM structure changes regularly. This code uses multiple strategies
-  // to find comment elements, falling back gracefully.
   // -------------------------------------------------------------------------
 
-  /** Find all comment containers on the page */
   function findCommentContainers() {
-    // Strategy 1: YouTube Studio specific elements
     let containers = findElements(document, [
       'ytcp-comment-thread',
       'ytcp-comment',
       '.comment-thread-renderer',
     ]);
 
-    // Strategy 2: Generic comment-like containers
     if (containers.length === 0) {
       containers = findElements(document, [
         '[class*="comment-thread"]',
         '[class*="comment-item"]',
         '[id*="comment"]',
       ]);
-      // Filter out non-comment elements
       containers = containers.filter((el) => {
         const text = el.textContent || '';
         return text.length > 20 && text.length < 10000;
       });
     }
 
-    // Strategy 3: Look for elements containing reply buttons
     if (containers.length === 0) {
       const replyBtns = findElements(document, [
         'button[aria-label*="reply" i]',
@@ -103,11 +95,9 @@
         'button[aria-label*="répondre" i]',
         '[class*="reply-button"]',
       ]);
-      // Get parent containers
       containers = replyBtns
         .map((btn) => {
           let parent = btn.parentElement;
-          // Walk up to find a reasonable container (not too large)
           for (let i = 0; i < 8; i++) {
             if (!parent || parent === document.body) break;
             if (parent.offsetHeight > 50 && parent.offsetHeight < 600) {
@@ -123,7 +113,6 @@
     return containers;
   }
 
-  /** Extract comment text from a container */
   function getCommentText(container) {
     const selectors = [
       '#content-text',
@@ -133,11 +122,9 @@
       '[class*="comment-text"]',
       '[class*="comment-content"]',
     ];
-
     const el = findElement(container, selectors);
     if (el) return el.textContent.trim();
 
-    // Fallback: find the largest text block in the container
     const textNodes = [];
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
     let node;
@@ -151,7 +138,6 @@
     return textNodes[0]?.text || '';
   }
 
-  /** Extract comment author */
   function getCommentAuthor(container) {
     const selectors = [
       '#author-text',
@@ -164,9 +150,7 @@
     return el ? el.textContent.trim() : 'Un viewer';
   }
 
-  /** Check if the channel owner already replied to this comment */
   function hasOwnerReply(container) {
-    // Look for owner badges in replies
     const badges = findElements(container, [
       '#author-comment-badge',
       'ytcp-author-comment-badge',
@@ -174,34 +158,25 @@
       '[class*="creator-badge"]',
       '[class*="owner"]',
     ]);
-
-    // Filter: must be in a reply section, not the main comment
     for (const badge of badges) {
       const inReply = badge.closest('[class*="repl"]') ||
         badge.closest('#replies') ||
         badge.closest('[id*="repl"]');
       if (inReply) return true;
     }
-
-    // Also check by looking for a specific badge icon or text
     const replySection = findElement(container, [
       '#replies',
       '#loaded-replies',
       '[class*="replies"]',
     ]);
     if (replySection) {
-      const text = replySection.textContent || '';
-      // The owner's channel name might appear as a badge
-      // This is a heuristic — not perfect but catches most cases
       if (findElement(replySection, ['[class*="badge"]', '[class*="creator"]'])) {
         return true;
       }
     }
-
     return false;
   }
 
-  /** Generate a stable ID for a comment */
   function getCommentId(container) {
     const text = getCommentText(container);
     const author = getCommentAuthor(container);
@@ -215,13 +190,9 @@
     return `cmt_${Math.abs(hash).toString(36)}`;
   }
 
-  /** Extract videoId from the page */
   function extractVideoId() {
-    // URL: studio.youtube.com/video/{videoId}/comments
     const urlMatch = window.location.pathname.match(/\/video\/([^/]+)/);
     if (urlMatch) return urlMatch[1];
-
-    // Look for video links in the page
     const link = findElement(document, [
       'a[href*="/video/"]',
       '[class*="video-title"] a',
@@ -231,7 +202,6 @@
       const match = href.match(/\/video\/([^/]+)/);
       if (match) return match[1];
     }
-
     return null;
   }
 
@@ -261,7 +231,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Suggestion UI
+  // Suggestion UI — Cards layout
   // -------------------------------------------------------------------------
 
   function createSuggestionsContainer(container, commentId) {
@@ -271,18 +241,38 @@
     el.className = SUGGESTIONS_CLASS;
     el.dataset.commentId = commentId;
 
-    // Loading state
+    // Loading state with skeleton cards
     el.innerHTML = `
       <div class="${NAMESPACE}-loading">
-        <div class="${NAMESPACE}-skeleton"></div>
-        <div class="${NAMESPACE}-skeleton"></div>
-        <div class="${NAMESPACE}-skeleton"></div>
+        <div class="${NAMESPACE}-loading-label">
+          <div class="${NAMESPACE}-loading-dot"></div>
+          <div class="${NAMESPACE}-loading-bar"></div>
+        </div>
+        <div class="${NAMESPACE}-skeleton-row">
+          <div class="${NAMESPACE}-skeleton-num"></div>
+          <div class="${NAMESPACE}-skeleton-lines">
+            <div class="${NAMESPACE}-skeleton-line"></div>
+            <div class="${NAMESPACE}-skeleton-line"></div>
+          </div>
+        </div>
+        <div class="${NAMESPACE}-skeleton-row">
+          <div class="${NAMESPACE}-skeleton-num"></div>
+          <div class="${NAMESPACE}-skeleton-lines">
+            <div class="${NAMESPACE}-skeleton-line"></div>
+            <div class="${NAMESPACE}-skeleton-line"></div>
+          </div>
+        </div>
+        <div class="${NAMESPACE}-skeleton-row">
+          <div class="${NAMESPACE}-skeleton-num"></div>
+          <div class="${NAMESPACE}-skeleton-lines">
+            <div class="${NAMESPACE}-skeleton-line"></div>
+            <div class="${NAMESPACE}-skeleton-line"></div>
+          </div>
+        </div>
       </div>
     `;
 
-    // Insert at end of the container (safest position)
     container.appendChild(el);
-
     return el;
   }
 
@@ -291,65 +281,132 @@
     const commentId = wrapper.dataset.commentId;
     wrapper.innerHTML = '';
 
-    // Chips
-    const chips = document.createElement('div');
-    chips.className = `${NAMESPACE}-chips`;
+    // Label row
+    const label = document.createElement('div');
+    label.className = `${NAMESPACE}-label`;
+    label.innerHTML = `
+      <span class="${NAMESPACE}-label-text">💬 Suggestions IA</span>
+      <div class="${NAMESPACE}-label-line"></div>
+      <div class="${NAMESPACE}-label-actions">
+        <button class="${NAMESPACE}-icon-btn ${NAMESPACE}-regen" title="Regenerer">↻</button>
+        <button class="${NAMESPACE}-icon-btn ${NAMESPACE}-dismiss-btn" title="Masquer">✕</button>
+      </div>
+    `;
+    wrapper.appendChild(label);
 
-    suggestions.forEach((text) => {
-      if (!text) return;
-      const chip = document.createElement('button');
-      chip.className = `${NAMESPACE}-chip`;
-      chip.title = text;
-      chip.textContent = text.length > 100 ? text.slice(0, 100) + '...' : text;
-
-      chip.addEventListener('click', () => {
-        insertReply(wrapper.parentElement, text);
-        wrapper.classList.add(`${NAMESPACE}-used`);
-      });
-      chips.appendChild(chip);
+    // Regen handler
+    label.querySelector(`.${NAMESPACE}-regen`).addEventListener('click', (e) => {
+      e.stopPropagation();
+      regenerate(wrapper);
     });
-    wrapper.appendChild(chips);
 
-    // Actions
-    const actions = document.createElement('div');
-    actions.className = `${NAMESPACE}-actions`;
-
-    const regen = document.createElement('button');
-    regen.className = `${NAMESPACE}-action-btn`;
-    regen.innerHTML = '&#x21BB;';
-    regen.title = 'Regenerer';
-    regen.addEventListener('click', () => regenerate(wrapper));
-    actions.appendChild(regen);
-
-    const dismiss = document.createElement('button');
-    dismiss.className = `${NAMESPACE}-action-btn ${NAMESPACE}-dismiss`;
-    dismiss.innerHTML = '&#x2715;';
-    dismiss.title = 'Ignorer';
-    dismiss.addEventListener('click', () => {
+    // Dismiss handler
+    label.querySelector(`.${NAMESPACE}-dismiss-btn`).addEventListener('click', (e) => {
+      e.stopPropagation();
       sendMessage({ type: 'DISMISS_COMMENT', commentId });
+      const container = wrapper.parentElement;
       wrapper.remove();
+      // Add dismissed hint
+      const hint = document.createElement('div');
+      hint.className = `${NAMESPACE}-dismissed`;
+      hint.innerHTML = `
+        <span>Suggestions masquees</span>
+        <span>·</span>
+        <button class="${NAMESPACE}-restore-btn">Reafficher</button>
+      `;
+      hint.querySelector(`.${NAMESPACE}-restore-btn`).addEventListener('click', () => {
+        hint.remove();
+        generateForContainer(container, true);
+      });
+      container.appendChild(hint);
     });
-    actions.appendChild(dismiss);
 
-    if (fallback) {
+    // Cards list
+    const list = document.createElement('div');
+    list.className = `${NAMESPACE}-list`;
+
+    const cards = [];
+
+    suggestions.forEach((text, i) => {
+      if (!text) return;
+
+      const card = document.createElement('div');
+      card.className = `${NAMESPACE}-card`;
+
+      const num = document.createElement('div');
+      num.className = `${NAMESPACE}-num`;
+      num.textContent = i + 1;
+
+      const content = document.createElement('div');
+      content.className = `${NAMESPACE}-content`;
+
+      const textEl = document.createElement('div');
+      textEl.className = `${NAMESPACE}-text`;
+      textEl.textContent = text;
+
+      const typeEl = document.createElement('div');
+      typeEl.className = `${NAMESPACE}-type`;
+      typeEl.textContent = SUGGESTION_TYPES[i] || '';
+
+      content.appendChild(textEl);
+      content.appendChild(typeEl);
+
+      const insertBtn = document.createElement('button');
+      insertBtn.className = `${NAMESPACE}-insert`;
+      insertBtn.textContent = 'Inserer';
+
+      card.appendChild(num);
+      card.appendChild(content);
+      card.appendChild(insertBtn);
+
+      // Click on card or button inserts
+      const handleInsert = (e) => {
+        e.stopPropagation();
+        insertReply(wrapper.parentElement, text);
+
+        // Mark as inserted
+        card.classList.add('inserted');
+        num.textContent = '✓';
+        typeEl.textContent = '✓ Inseree dans le champ de reponse';
+        insertBtn.textContent = 'Inseree';
+
+        // Dim other cards
+        cards.forEach((c) => {
+          if (c !== card) c.classList.add('dimmed');
+        });
+      };
+
+      card.addEventListener('click', handleInsert);
+      insertBtn.addEventListener('click', handleInsert);
+
+      list.appendChild(card);
+      cards.push(card);
+    });
+
+    wrapper.appendChild(list);
+
+    // Provider badge
+    if (providerName && providerName !== 'chrome-ai') {
       const badge = document.createElement('span');
-      badge.className = `${NAMESPACE}-fallback-badge`;
-      badge.textContent = `fallback: ${providerName}`;
-      actions.appendChild(badge);
+      badge.className = `${NAMESPACE}-provider-badge`;
+      badge.textContent = providerName === 'anthropic' ? 'Claude' : providerName === 'openai' ? 'GPT-4o' : providerName;
+      label.querySelector(`.${NAMESPACE}-label-actions`).prepend(badge);
     }
-
-    wrapper.appendChild(actions);
   }
 
   function renderError(wrapper, msg) {
     if (!wrapper) return;
     wrapper.innerHTML = `
+      <div class="${NAMESPACE}-label">
+        <span class="${NAMESPACE}-label-text">💬 Suggestions IA</span>
+        <div class="${NAMESPACE}-label-line"></div>
+      </div>
       <div class="${NAMESPACE}-error">
-        <span>${msg || 'Erreur de generation'}</span>
-        <button class="${NAMESPACE}-action-btn" title="Reessayer">&#x21BB;</button>
+        <span class="${NAMESPACE}-error-text">${msg || 'Erreur de generation'}</span>
+        <button class="${NAMESPACE}-icon-btn" title="Reessayer">↻</button>
       </div>
     `;
-    wrapper.querySelector(`.${NAMESPACE}-action-btn`).addEventListener('click', () =>
+    wrapper.querySelector(`.${NAMESPACE}-icon-btn`).addEventListener('click', () =>
       regenerate(wrapper)
     );
   }
@@ -361,7 +418,6 @@
   function insertReply(container, text) {
     if (!container) return;
 
-    // Click reply button to open the field
     const replyBtn = findElement(container, [
       '#reply-button button',
       '#reply-button',
@@ -373,7 +429,6 @@
     ]);
     if (replyBtn) replyBtn.click();
 
-    // Wait for input to appear, then fill it
     setTimeout(() => {
       const input = findElement(container, [
         '#contenteditable-root',
@@ -392,7 +447,6 @@
         } else {
           input.textContent = text;
         }
-        // Dispatch events so YouTube Studio picks up the change
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
         input.dispatchEvent(
@@ -411,15 +465,17 @@
   // Generation
   // -------------------------------------------------------------------------
 
-  async function generateForContainer(container) {
+  async function generateForContainer(container, force) {
     const text = getCommentText(container);
     if (!text || text.length < 5) return;
 
     const commentId = getCommentId(container);
     if (!commentId) return;
 
-    const { dismissed } = await sendMessage({ type: 'IS_DISMISSED', commentId });
-    if (dismissed) return;
+    if (!force) {
+      const { dismissed } = await sendMessage({ type: 'IS_DISMISSED', commentId });
+      if (dismissed) return;
+    }
 
     const wrapper = createSuggestionsContainer(container, commentId);
     if (!wrapper) return;
@@ -449,9 +505,31 @@
 
     wrapper.innerHTML = `
       <div class="${NAMESPACE}-loading">
-        <div class="${NAMESPACE}-skeleton"></div>
-        <div class="${NAMESPACE}-skeleton"></div>
-        <div class="${NAMESPACE}-skeleton"></div>
+        <div class="${NAMESPACE}-loading-label">
+          <div class="${NAMESPACE}-loading-dot"></div>
+          <div class="${NAMESPACE}-loading-bar"></div>
+        </div>
+        <div class="${NAMESPACE}-skeleton-row">
+          <div class="${NAMESPACE}-skeleton-num"></div>
+          <div class="${NAMESPACE}-skeleton-lines">
+            <div class="${NAMESPACE}-skeleton-line"></div>
+            <div class="${NAMESPACE}-skeleton-line"></div>
+          </div>
+        </div>
+        <div class="${NAMESPACE}-skeleton-row">
+          <div class="${NAMESPACE}-skeleton-num"></div>
+          <div class="${NAMESPACE}-skeleton-lines">
+            <div class="${NAMESPACE}-skeleton-line"></div>
+            <div class="${NAMESPACE}-skeleton-line"></div>
+          </div>
+        </div>
+        <div class="${NAMESPACE}-skeleton-row">
+          <div class="${NAMESPACE}-skeleton-num"></div>
+          <div class="${NAMESPACE}-skeleton-lines">
+            <div class="${NAMESPACE}-skeleton-line"></div>
+            <div class="${NAMESPACE}-skeleton-line"></div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -484,7 +562,6 @@
         );
         if (!btn) return;
 
-        // Find the input near the button
         let scope = btn.parentElement;
         for (let i = 0; i < 5; i++) {
           if (!scope) break;
@@ -498,7 +575,6 @@
             if (replyText.trim().length > 5) {
               sendMessage({ type: 'RECORD_REPLY', replyText: replyText.trim() });
             }
-            // Remove suggestions
             const suggestions = scope.querySelector(`.${SUGGESTIONS_CLASS}`);
             if (suggestions) {
               suggestions.classList.add(`${NAMESPACE}-posted`);
@@ -587,7 +663,6 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'SCRAPE_REPLIES') {
-      // Chercher les reponses du proprietaire sur la page
       const ownerReplies = [];
       const allElements = findElements(document, [
         'ytcp-comment',
@@ -639,7 +714,6 @@
     watchDOM();
     watchForReplies();
 
-    // Scan initial + periodique
     scanComments();
     setInterval(scanComments, 5000);
   }
