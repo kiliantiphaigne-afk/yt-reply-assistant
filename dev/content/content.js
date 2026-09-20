@@ -365,120 +365,182 @@
     `;
   }
 
+  // -------------------------------------------------------------------------
+  // Portal: suggestions are appended to document.body and positioned
+  // absolutely, anchored to the comment. This avoids ALL YouTube Studio
+  // CSS interference (overflow:hidden, Polymer slots, shadow DOM, etc.)
+  // -------------------------------------------------------------------------
+
+  /** Track all active portals for cleanup */
+  const activePortals = new Map(); // commentId -> { el, rafId, container }
+
   /**
-   * Find existing suggestions for a given comment, checking both sibling
-   * elements and (legacy) children of the container.
+   * Find existing suggestions portal by commentId.
    */
   function findExistingSuggestions(container, commentId) {
-    // Check next siblings first (new insertion method)
+    if (commentId && activePortals.has(commentId)) {
+      return activePortals.get(commentId).el;
+    }
+    // Also search DOM directly (safety net)
     if (commentId) {
-      let sibling = container.nextElementSibling;
-      while (sibling) {
-        if (sibling.classList.contains(SUGGESTIONS_CLASS) &&
-            sibling.dataset.commentId === commentId) {
-          return sibling;
-        }
-        sibling = sibling.nextElementSibling;
-      }
+      return document.querySelector(`.${SUGGESTIONS_CLASS}[data-comment-id="${commentId}"]`);
     }
-    // Also check ALL siblings that are suggestions (for cases without commentId)
-    let sibling = container.nextElementSibling;
-    while (sibling) {
-      if (sibling.classList.contains(SUGGESTIONS_CLASS)) return sibling;
-      sibling = sibling.nextElementSibling;
-    }
-    // Legacy fallback: inside container
-    return container.querySelector(`.${SUGGESTIONS_CLASS}`);
+    return null;
   }
 
   /**
-   * Insert an element and verify it's actually visible.
-   * Returns true if the element has a non-zero rendered height.
+   * Find the scrollable ancestor of the comments list.
    */
-  function insertAndVerify(el, strategy) {
-    try {
-      strategy();
-      // Force layout calculation
-      void el.offsetHeight;
-      // Check: is it actually rendering? (height > 0 means visible)
-      return el.offsetHeight > 0;
-    } catch (e) {
-      LOG('Insert strategy failed:', e.message);
-      return false;
-    }
-  }
-
-  /**
-   * Force overflow:visible on all ancestors up to N levels.
-   * This ensures nothing clips our suggestions.
-   */
-  function forceParentOverflow(el, levels = 6) {
+  function findScrollParent(el) {
     let parent = el.parentElement;
-    for (let i = 0; i < levels; i++) {
-      if (!parent || parent === document.body || parent === document.documentElement) break;
+    while (parent && parent !== document.documentElement) {
       const style = getComputedStyle(parent);
-      if (style.overflow === 'hidden' || style.overflowY === 'hidden') {
-        parent.style.setProperty('overflow', 'visible', 'important');
-        LOG('Forced overflow:visible on', parent.tagName, parent.id || parent.className);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll' ||
+          style.overflow === 'auto' || style.overflow === 'scroll') {
+        return parent;
       }
       parent = parent.parentElement;
+    }
+    return window;
+  }
+
+  /**
+   * Position the portal element below the comment container.
+   * Also adds margin-bottom to the anchor element to push content down
+   * (since the portal is absolutely positioned and out of flow).
+   */
+  function startPositioning(el, container, commentId) {
+    const scrollParent = findScrollParent(container);
+    // The anchor is the thread (or container itself) — we add margin to it
+    const anchor = container.closest('ytcp-comment-thread') || container;
+    const originalMargin = anchor.style.marginBottom || '';
+
+    function updatePosition() {
+      if (!el.isConnected || !container.isConnected) {
+        stopPositioning(commentId);
+        return;
+      }
+
+      const portalH = el.offsetHeight || 0;
+      const rect = anchor.getBoundingClientRect();
+      const bodyRect = document.body.getBoundingClientRect();
+
+      // Natural bottom = top + offsetHeight (excludes margin we added)
+      const anchorTop = rect.top - bodyRect.top;
+      const anchorBottom = anchorTop + anchor.offsetHeight;
+
+      // Place portal right below anchor's natural edge
+      el.style.top = (anchorBottom + 2) + 'px';
+      el.style.left = (rect.left - bodyRect.left) + 'px';
+      el.style.width = rect.width + 'px';
+
+      // Reserve space below so content is pushed down
+      if (portalH > 0) {
+        anchor.style.marginBottom = (portalH + 6) + 'px';
+      }
+    }
+
+    // Initial position (with delay to let skeleton render)
+    requestAnimationFrame(() => {
+      updatePosition();
+      // Second pass after layout
+      requestAnimationFrame(updatePosition);
+    });
+
+    // Re-position on scroll (using rAF for smoothness)
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => {
+          updatePosition();
+          ticking = false;
+        });
+      }
+    };
+
+    const scrollTarget = scrollParent === window ? window : scrollParent;
+    scrollTarget.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+
+    // Store for cleanup
+    activePortals.set(commentId, {
+      el,
+      container,
+      anchor,
+      originalMargin,
+      cleanup: () => {
+        scrollTarget.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+        // Restore original margin
+        anchor.style.marginBottom = originalMargin;
+      },
+    });
+  }
+
+  function stopPositioning(commentId) {
+    const portal = activePortals.get(commentId);
+    if (portal) {
+      portal.cleanup();
+      activePortals.delete(commentId);
+    }
+  }
+
+  /**
+   * Remove a suggestions portal cleanly.
+   */
+  function removeSuggestionsPortal(commentId) {
+    const portal = activePortals.get(commentId);
+    if (portal) {
+      portal.el.remove();
+      portal.cleanup();
+      activePortals.delete(commentId);
+    } else {
+      // Fallback: find by DOM query
+      const el = document.querySelector(`.${SUGGESTIONS_CLASS}[data-comment-id="${commentId}"]`);
+      if (el) el.remove();
+    }
+  }
+
+  /**
+   * Update the space reserved for a portal after content changes
+   * (e.g. skeleton replaced by actual suggestions).
+   */
+  function updatePortalSpace(commentId) {
+    const portal = activePortals.get(commentId);
+    if (portal && portal.el.isConnected) {
+      const portalH = portal.el.offsetHeight;
+      const rect = portal.anchor.getBoundingClientRect();
+      const bodyRect = document.body.getBoundingClientRect();
+      const anchorBottom = (rect.top - bodyRect.top) + portal.anchor.offsetHeight;
+
+      portal.el.style.top = (anchorBottom + 2) + 'px';
+      if (portalH > 0) {
+        portal.anchor.style.marginBottom = (portalH + 6) + 'px';
+      }
     }
   }
 
   function createSuggestionsContainer(container, commentId) {
     // Remove any existing suggestions for this comment
-    const existing = findExistingSuggestions(container, commentId);
-    if (existing) existing.remove();
+    removeSuggestionsPortal(commentId);
 
     const el = document.createElement('div');
     el.className = SUGGESTIONS_CLASS;
     el.dataset.commentId = commentId;
-    el._commentContainer = container; // Store ref for regeneration
+    el._commentContainer = container;
     el.innerHTML = createSkeletonHTML();
 
     // ---------------------------------------------------------------
-    // Multi-strategy insertion: try from safest to most invasive.
-    // YouTube Studio uses Web Components (Polymer) with Shadow DOM,
-    // so some insertion points may not render our element.
+    // PORTAL APPROACH: append to document.body, positioned absolutely.
+    // This completely avoids YouTube Studio's CSS/Shadow DOM interference.
+    // The element lives outside Polymer's component tree.
+    // A margin-bottom is added to the anchor to reserve space in the flow.
     // ---------------------------------------------------------------
+    document.body.appendChild(el);
+    startPositioning(el, container, commentId);
 
-    let inserted = false;
-
-    // Strategy 1: Sibling of the comment container (avoids overflow:hidden)
-    if (!inserted) {
-      inserted = insertAndVerify(el, () => container.after(el));
-      if (inserted) LOG('Suggestions insereees: sibling apres container');
-    }
-
-    // Strategy 2: Sibling of the parent thread (one level up)
-    if (!inserted && container.parentElement) {
-      inserted = insertAndVerify(el, () => container.parentElement.after(el));
-      if (inserted) LOG('Suggestions insereees: sibling apres thread parent');
-    }
-
-    // Strategy 3: Inside the container, after the toolbar/actions bar
-    if (!inserted) {
-      const { parent, after } = findInsertionPoint(container);
-      inserted = insertAndVerify(el, () => {
-        if (after) {
-          insertAfter(el, after);
-        } else {
-          parent.appendChild(el);
-        }
-      });
-      if (inserted) {
-        forceParentOverflow(el);
-        LOG('Suggestions insereees: inside container (avec force overflow)');
-      }
-    }
-
-    // Strategy 4: Direct append to container + force overflow on all ancestors
-    if (!inserted) {
-      container.appendChild(el);
-      forceParentOverflow(el);
-      LOG('Suggestions insereees: fallback append + force overflow');
-    }
-
+    LOG('Suggestions portal cree pour', commentId);
     return el;
   }
 
@@ -513,7 +575,8 @@
 
     label.querySelector(`.${NAMESPACE}-dismiss-btn`).addEventListener('click', (e) => {
       e.stopPropagation();
-      wrapper.remove();
+      const cid = wrapper.dataset.commentId;
+      removeSuggestionsPortal(cid);
       // Re-inject the trigger button
       injectTriggerButton(container);
     });
@@ -574,6 +637,9 @@
 
     wrapper.appendChild(list);
     LOG('Suggestions rendues:', suggestions.length, 'cards');
+
+    // Update portal space now that content changed (cards replace skeleton)
+    requestAnimationFrame(() => updatePortalSpace(wrapper.dataset.commentId));
   }
 
   function renderError(wrapper, msg, container) {
@@ -593,9 +659,12 @@
       regenerate(wrapper, container)
     );
     wrapper.querySelector(`.${NAMESPACE}-dismiss-err`).addEventListener('click', () => {
-      wrapper.remove();
+      removeSuggestionsPortal(wrapper.dataset.commentId);
       injectTriggerButton(container);
     });
+
+    // Update portal space
+    requestAnimationFrame(() => updatePortalSpace(wrapper.dataset.commentId));
   }
 
   // -------------------------------------------------------------------------
@@ -718,7 +787,7 @@
 
   async function regenerate(wrapper, container) {
     if (!container) {
-      container = wrapper._commentContainer || wrapper.previousElementSibling || wrapper.parentElement;
+      container = wrapper._commentContainer;
     }
     if (!container) return;
 
@@ -774,14 +843,18 @@
             if (replyText.trim().length > 5) {
               sendMessage({ type: 'RECORD_REPLY', replyText: replyText.trim() });
             }
-            // Find suggestions: check inside scope AND as next sibling (new layout)
-            let suggestionsEl = scope.querySelector(`.${SUGGESTIONS_CLASS}`);
-            if (!suggestionsEl) {
-              suggestionsEl = findExistingSuggestions(scope, null);
-            }
-            if (suggestionsEl) {
-              suggestionsEl.classList.add(`${NAMESPACE}-posted`);
-              setTimeout(() => suggestionsEl.remove(), 300);
+            // Find the active suggestions portal for this comment
+            // Walk up to find the comment container, get its ID
+            let commentContainer = scope.closest('ytcp-comment') || scope.closest('[data-yt-reply-assistant-processed]');
+            if (commentContainer) {
+              const cid = getCommentId(commentContainer);
+              if (cid) {
+                const suggestionsEl = findExistingSuggestions(commentContainer, cid);
+                if (suggestionsEl) {
+                  suggestionsEl.classList.add(`${NAMESPACE}-posted`);
+                  setTimeout(() => removeSuggestionsPortal(cid), 300);
+                }
+              }
             }
             break;
           }

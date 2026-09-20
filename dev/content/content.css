@@ -77,24 +77,17 @@ html:not([dark]) .yt-reply-assistant-trigger:hover,
 
 /* ---------- Container ---------- */
 
+/* Portal mode: element is on document.body, absolutely positioned */
 .yt-reply-assistant-suggestions {
-  margin: 4px 0 16px 0;
-  padding: 8px 0 8px 54px;
+  position: absolute;
+  z-index: 2147483640; /* Max safe z-index — above everything */
+  padding: 8px 0 12px 54px;
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
   line-height: 1.4;
-  position: relative;
-  z-index: 10;
-  overflow: visible !important;
-  max-height: none !important;
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1;
-  /* Guarantee rendering regardless of parent constraints */
-  contain: none !important;
-  clip: auto !important;
-  clip-path: none !important;
-  min-height: 40px;
+  overflow: visible;
+  box-sizing: border-box;
+  pointer-events: auto;
 }
 
 /* ---------- Label row ---------- */

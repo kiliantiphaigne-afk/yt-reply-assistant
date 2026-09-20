@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="fr" dark>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TEST — Portal Approach (body-appended, absolutely positioned)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0f0f0f;
+      color: #e0e0e0;
+      font-family: 'Roboto', sans-serif;
+      min-height: 200vh; /* Force scroll to test repositioning */
+      position: relative;
+    }
+
+    .preview-banner {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: #2eb87b; color: #000;
+      text-align: center; padding: 8px;
+      font-size: 12px; font-weight: 500; z-index: 2147483647;
+    }
+
+    /* YouTube Studio layout */
+    .yt-studio-layout { display: flex; padding-top: 40px; }
+    .yt-studio-sidebar {
+      width: 240px; background: #0f0f0f;
+      border-right: 1px solid #1e1e1e;
+      min-height: 100vh; padding: 16px; flex-shrink: 0;
+      position: fixed; top: 40px; left: 0;
+    }
+    .yt-studio-sidebar .nav-item {
+      padding: 10px 16px; color: #aaa; font-size: 13px;
+      border-radius: 8px; cursor: pointer;
+    }
+    .yt-studio-sidebar .nav-item.active { background: #272727; color: #fff; }
+
+    .yt-studio-main {
+      flex: 1; max-width: 900px; padding: 24px 32px; margin-left: 240px;
+    }
+    .yt-studio-header { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 8px; }
+    .yt-studio-subheader { font-size: 13px; color: #666; margin-bottom: 24px; }
+
+    /* CRITICAL: simule le vrai YouTube Studio */
+    ytcp-comment-thread {
+      display: block;
+      border-bottom: 1px solid #1a1a1a;
+      overflow: hidden; /* The problematic property */
+    }
+    ytcp-comment {
+      display: block;
+      padding: 16px 0;
+      overflow: hidden; /* Also problematic */
+    }
+
+    .comment-main { display: flex; gap: 14px; }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 600; color: #fff; flex-shrink: 0;
+    }
+    .comment-body { flex: 1; }
+    #author-text {
+      font-size: 13px; font-weight: 500; color: #aaa;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .comment-date { font-size: 11px; color: #484848; font-weight: 400; }
+    #content-text {
+      font-size: 14px; color: #e0e0e0;
+      line-height: 1.55; margin-top: 6px; margin-bottom: 10px;
+    }
+    #toolbar { display: flex; align-items: center; gap: 4px; }
+    .yt-btn {
+      background: none; border: none; color: #606060;
+      font-size: 12px; padding: 6px 10px; border-radius: 16px;
+      cursor: pointer; display: flex; align-items: center; gap: 5px;
+      transition: background 150ms, color 150ms; font-family: inherit;
+    }
+    .yt-btn:hover { background: #272727; color: #e0e0e0; }
+
+    /* ===== Extension CSS — PORTAL MODE ===== */
+
+    .yt-reply-assistant-trigger {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: 14px;
+      background: rgba(62, 166, 255, 0.08);
+      border: 1px solid rgba(62, 166, 255, 0.15);
+      color: #3ea6ff; font-size: 11.5px; font-weight: 500;
+      font-family: 'Roboto', sans-serif;
+      cursor: pointer; transition: background 150ms, border-color 150ms;
+      margin-left: 4px; white-space: nowrap;
+    }
+    .yt-reply-assistant-trigger:hover {
+      background: rgba(62, 166, 255, 0.14);
+      border-color: rgba(62, 166, 255, 0.35);
+    }
+    .yt-reply-assistant-trigger-sparkle { font-size: 12px; }
+    .yt-reply-assistant-trigger-loading {
+      background: rgba(62, 166, 255, 0.14) !important;
+      border-color: rgba(62, 166, 255, 0.35) !important;
+    }
+    .yt-reply-assistant-trigger-spinner {
+      display: inline-block; width: 10px; height: 10px;
+      border: 2px solid rgba(62, 166, 255, 0.3);
+      border-top-color: #3ea6ff; border-radius: 50%;
+      animation: yt-ra-spin 0.6s linear infinite;
+    }
+    @keyframes yt-ra-spin { to { transform: rotate(360deg); } }
+
+    /* PORTAL: absolutely positioned on body */
+    .yt-reply-assistant-suggestions {
+      position: absolute;
+      z-index: 2147483640;
+      padding: 8px 0 12px 54px;
+      font-family: 'Roboto', sans-serif;
+      font-size: 13px; line-height: 1.4;
+      overflow: visible;
+      box-sizing: border-box;
+      pointer-events: auto;
+    }
+
+    .yt-reply-assistant-label {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    }
+    .yt-reply-assistant-label-text {
+      font-size: 11px; color: #484848; font-weight: 500;
+      letter-spacing: 0.02em; white-space: nowrap;
+    }
+    .yt-reply-assistant-label-line { flex: 1; height: 1px; background: #1e1e1e; }
+    .yt-reply-assistant-label-actions { display: flex; align-items: center; gap: 2px; }
+
+    .yt-reply-assistant-icon-btn {
+      background: none; border: none; color: #333;
+      cursor: pointer; padding: 3px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 150ms, background 150ms;
+      font-family: inherit; font-size: 13px; line-height: 1;
+    }
+    .yt-reply-assistant-icon-btn:hover { color: #666; background: #1a1a1a; }
+
+    .yt-reply-assistant-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .yt-reply-assistant-card {
+      background: #161616; border: 1px solid #232323;
+      border-radius: 10px; padding: 10px 14px; cursor: pointer;
+      transition: border-color 180ms ease, background-color 180ms ease;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .yt-reply-assistant-card:hover {
+      border-color: rgba(62, 166, 255, 0.25); background: #1a1d22;
+    }
+    .yt-reply-assistant-num {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: #1e1e1e; color: #555;
+      font-size: 11px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .yt-reply-assistant-card:hover .yt-reply-assistant-num {
+      background: rgba(62, 166, 255, 0.12); color: #3ea6ff;
+    }
+    .yt-reply-assistant-content { flex: 1; min-width: 0; }
+    .yt-reply-assistant-text { font-size: 13px; color: #c0c0c0; line-height: 1.5; }
+    .yt-reply-assistant-card:hover .yt-reply-assistant-text { color: #e0e0e0; }
+    .yt-reply-assistant-type { font-size: 10.5px; color: #404040; margin-top: 4px; font-weight: 500; }
+
+    .yt-reply-assistant-insert {
+      opacity: 0; background: #3ea6ff; color: #000;
+      border: none; font-size: 11px; font-weight: 600;
+      padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      white-space: nowrap; transition: opacity 150ms, background 150ms;
+      flex-shrink: 0; align-self: center; font-family: inherit;
+    }
+    .yt-reply-assistant-card:hover .yt-reply-assistant-insert { opacity: 1; }
+
+    .yt-reply-assistant-provider-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: #333; margin-left: 8px;
+    }
+
+    /* Skeleton */
+    .yt-reply-assistant-loading { display: flex; flex-direction: column; gap: 6px; }
+    .yt-reply-assistant-loading-label { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+    .yt-reply-assistant-loading-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+      background-size: 200% 100%; animation: yt-ra-shimmer 1.8s ease-in-out infinite;
+    }
+    .yt-reply-assistant-loading-bar {
+      width: 100px; height: 8px; border-radius: 3px;
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%; animation: yt-ra-shimmer 1.8s ease-in-out infinite;
+    }
+    .yt-reply-assistant-skeleton-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      background: #161616; border: 1px solid #1e1e1e; border-radius: 10px;
+    }
+    .yt-reply-assistant-skeleton-num { width: 22px; height: 22px; border-radius: 6px; background: #1e1e1e; flex-shrink: 0; }
+    .yt-reply-assistant-skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .yt-reply-assistant-skeleton-line {
+      height: 10px;
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%; animation: yt-ra-shimmer 1.8s ease-in-out infinite;
+      border-radius: 4px;
+    }
+    .yt-reply-assistant-skeleton-line:nth-child(1) { width: 90%; }
+    .yt-reply-assistant-skeleton-line:nth-child(2) { width: 60%; }
+    @keyframes yt-ra-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+
+<div class="preview-banner">
+  PORTAL TEST — Suggestions appended to document.body, absolutely positioned. Scroll to verify tracking.
+</div>
+
+<div class="yt-studio-layout">
+  <div class="yt-studio-sidebar">
+    <div class="nav-item">Dashboard</div>
+    <div class="nav-item">Contenu</div>
+    <div class="nav-item active">Commentaires</div>
+    <div class="nav-item">Analytics</div>
+  </div>
+
+  <div class="yt-studio-main">
+    <div class="yt-studio-header">Commentaires</div>
+    <div class="yt-studio-subheader">Cliquez sur "Generer" pour tester l'approche portail</div>
+
+    <!-- COMMENT 1 -->
+    <ytcp-comment-thread>
+      <ytcp-comment id="comment-1">
+        <div class="comment-main">
+          <div class="avatar" style="background: #e85d04;">M</div>
+          <div class="comment-body">
+            <div id="author-text">Maxime Lebrun <span class="comment-date">il y a 2h</span></div>
+            <div id="content-text">Franchement trop bien explique ! Par contre, tu parles de la strategie de prix au debut mais t'as pas vraiment detaille comment tu fixais tes tarifs au tout debut quand t'avais 0 client. C'est ca qui m'interesse le plus perso 🤔</div>
+            <div id="toolbar">
+              <button class="yt-btn">👍 12</button>
+              <button class="yt-btn">💬 Repondre</button>
+              <button class="yt-reply-assistant-trigger" data-target="comment-1">
+                <span class="yt-reply-assistant-trigger-sparkle">✨</span> Generer
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+    </ytcp-comment-thread>
+
+    <!-- COMMENT 2 -->
+    <ytcp-comment-thread>
+      <ytcp-comment id="comment-2">
+        <div class="comment-main">
+          <div class="avatar" style="background: #7b2cbf;">S</div>
+          <div class="comment-body">
+            <div id="author-text">Sarah Dev <span class="comment-date">il y a 5h</span></div>
+            <div id="content-text">Est-ce que t'utilises un framework particulier ou c'est du custom ? Je suis dev et je cherche a lancer un SaaS aussi mais je sais pas trop par ou commencer cote technique 🤷‍♀️</div>
+            <div id="toolbar">
+              <button class="yt-btn">👍 8</button>
+              <button class="yt-btn">💬 Repondre</button>
+              <button class="yt-reply-assistant-trigger" data-target="comment-2">
+                <span class="yt-reply-assistant-trigger-sparkle">✨</span> Generer
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+    </ytcp-comment-thread>
+
+    <!-- COMMENT 3 -->
+    <ytcp-comment-thread>
+      <ytcp-comment id="comment-3">
+        <div class="comment-main">
+          <div class="avatar" style="background: #0077b6;">A</div>
+          <div class="comment-body">
+            <div id="author-text">Alex Martin <span class="comment-date">il y a 8h</span></div>
+            <div id="content-text">J'ai fait exactement le meme parcours mais en e-commerce. Le passage de side project a full-time c'est un sacre step. Comment t'as gere financierement la transition ?</div>
+            <div id="toolbar">
+              <button class="yt-btn">👍 21</button>
+              <button class="yt-btn">💬 Repondre</button>
+              <button class="yt-reply-assistant-trigger" data-target="comment-3">
+                <span class="yt-reply-assistant-trigger-sparkle">✨</span> Generer
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+    </ytcp-comment-thread>
+
+    <!-- COMMENT 4 -->
+    <ytcp-comment-thread>
+      <ytcp-comment id="comment-4">
+        <div class="comment-main">
+          <div class="avatar" style="background: #2d6a4f;">L</div>
+          <div class="comment-body">
+            <div id="author-text">Lucas Moreau <span class="comment-date">il y a 12h</span></div>
+            <div id="content-text">Trop motivant comme video ! Continue comme ca 🔥🔥🔥</div>
+            <div id="toolbar">
+              <button class="yt-btn">👍 45</button>
+              <button class="yt-btn">💬 Repondre</button>
+              <button class="yt-reply-assistant-trigger" data-target="comment-4">
+                <span class="yt-reply-assistant-trigger-sparkle">✨</span> Generer
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+    </ytcp-comment-thread>
+
+    <div style="height: 600px; display: flex; align-items: center; justify-content: center; color: #333; font-size: 13px;">
+      ↑ Scroll up to test suggestion tracking ↑
+    </div>
+  </div>
+</div>
+
+<script>
+  const SUGGESTIONS = {
+    'comment-1': [
+      { text: "Merci Maxime ! Super question 😊 Au tout debut, j'ai commence avec un tarif plancher juste pour avoir mes premiers clients et des retours. Genre 50% moins cher que ce que je visais. Apres 5-6 clients, j'ai augmente progressivement. Tu veux que je fasse une video dediee la-dessus ?", type: "Reponse directe + question de relance" },
+      { text: "Top question ! Pour les premiers tarifs, j'ai utilise la methode 'anchor pricing' — tu regardes ce que fait la concurrence et tu te positionnes 20% en dessous pour decoller.", type: "Reponse approfondie + lien video" },
+      { text: "Ah bonne question ! En gros : tarif bas au debut + augmentation tous les 3 mois. Ca marche bien ?", type: "Reponse courte + micro-question" },
+    ],
+    'comment-2': [
+      { text: "Hey Sarah ! J'utilise Next.js + Supabase pour le SaaS. C'est le combo le plus rapide pour un dev solo. Si tu veux, j'ai fait une video 'Stack technique SaaS' qui detaille tout 🚀", type: "Reponse directe + question de relance" },
+      { text: "Bonne question ! Perso j'ai commence custom puis migre sur Next.js quand le projet a grandi. Mon conseil : commence simple, itere vite. Tu bosses sur quoi comme SaaS ?", type: "Reponse approfondie" },
+      { text: "Next.js + Supabase, ca envoie ! C'est quoi ton idee de SaaS ?", type: "Reponse courte + micro-question" },
+    ],
+    'comment-3': [
+      { text: "Ah sacre parcours ! Pour la transition financiere, j'ai mis de cote 6 mois de salaire avant de sauter. Et j'ai garde un client freelance 'de securite' les premiers mois. Tu es a quel stade toi ?", type: "Reponse directe + question de relance" },
+      { text: "Le passage full-time c'est le plus dur ! Mon conseil : garde un filet de securite financier (6 mois min) et lance-toi quand ton side project fait au moins 30% de ton salaire. Tu veux que j'en fasse une video ?", type: "Reponse approfondie" },
+      { text: "6 mois d'epargne + 1 client freelance de securite. C'est la recette ! Et toi, t'en es ou ?", type: "Reponse courte + micro-question" },
+    ],
+    'comment-4': [
+      { text: "Merci Lucas, ca fait plaisir ! La suite arrive bientot 😊🔥", type: "Reponse directe" },
+      { text: "Merci beaucoup ! Ca motive de lire des commentaires comme ca. N'hesite pas a partager si t'as des sujets qui t'interessent !", type: "Reponse + engagement" },
+      { text: "Merci !! 🔥🙏", type: "Reponse courte" },
+    ],
+  };
+
+  // Portal approach: append to body + margin-bottom on anchor for space
+  function createPortal(commentEl) {
+    const targetId = commentEl.id;
+    const anchor = commentEl.closest('ytcp-comment-thread') || commentEl;
+    const originalMargin = anchor.style.marginBottom || '';
+
+    // Remove existing
+    const existing = document.querySelector(`.yt-reply-assistant-suggestions[data-target="${targetId}"]`);
+    if (existing) { existing.remove(); anchor.style.marginBottom = originalMargin; }
+
+    const el = document.createElement('div');
+    el.className = 'yt-reply-assistant-suggestions';
+    el.dataset.target = targetId;
+    el.innerHTML = `
+      <div class="yt-reply-assistant-loading">
+        <div class="yt-reply-assistant-loading-label"><div class="yt-reply-assistant-loading-dot"></div><div class="yt-reply-assistant-loading-bar"></div></div>
+        <div class="yt-reply-assistant-skeleton-row"><div class="yt-reply-assistant-skeleton-num"></div><div class="yt-reply-assistant-skeleton-lines"><div class="yt-reply-assistant-skeleton-line"></div><div class="yt-reply-assistant-skeleton-line"></div></div></div>
+        <div class="yt-reply-assistant-skeleton-row"><div class="yt-reply-assistant-skeleton-num"></div><div class="yt-reply-assistant-skeleton-lines"><div class="yt-reply-assistant-skeleton-line"></div><div class="yt-reply-assistant-skeleton-line"></div></div></div>
+        <div class="yt-reply-assistant-skeleton-row"><div class="yt-reply-assistant-skeleton-num"></div><div class="yt-reply-assistant-skeleton-lines"><div class="yt-reply-assistant-skeleton-line"></div><div class="yt-reply-assistant-skeleton-line"></div></div></div>
+      </div>
+    `;
+
+    document.body.appendChild(el);
+
+    function updatePos() {
+      if (!el.isConnected) return;
+      const portalH = el.offsetHeight || 0;
+      const rect = anchor.getBoundingClientRect();
+      const bodyRect = document.body.getBoundingClientRect();
+      // Natural bottom = top + offsetHeight (excludes margin, includes border+padding)
+      const anchorTop = rect.top - bodyRect.top;
+      const anchorBottom = anchorTop + anchor.offsetHeight;
+      // Place portal right below the anchor's natural edge
+      el.style.top = (anchorBottom + 2) + 'px';
+      el.style.left = (rect.left - bodyRect.left) + 'px';
+      el.style.width = rect.width + 'px';
+      // Reserve space below so next comment is pushed down
+      anchor.style.marginBottom = (portalH + 6) + 'px';
+    }
+
+    requestAnimationFrame(() => { updatePos(); requestAnimationFrame(updatePos); });
+
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) { ticking = true; requestAnimationFrame(() => { updatePos(); ticking = false; }); }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+
+    const cleanup = () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      anchor.style.marginBottom = originalMargin;
+    };
+
+    return { el, cleanup, updatePos };
+  }
+
+  // Click handlers
+  document.querySelectorAll('.yt-reply-assistant-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.target;
+      const commentEl = document.getElementById(targetId);
+      if (!commentEl) return;
+
+      btn.disabled = true;
+      btn.classList.add('yt-reply-assistant-trigger-loading');
+      btn.innerHTML = '<span class="yt-reply-assistant-trigger-spinner"></span> Generation...';
+
+      const portal = createPortal(commentEl);
+      btn.remove();
+
+      // Simulate AI response after 2s
+      setTimeout(() => {
+        const suggestions = SUGGESTIONS[targetId] || [];
+        portal.el.innerHTML = `
+          <div class="yt-reply-assistant-label">
+            <span class="yt-reply-assistant-label-text">💬 Suggestions IA</span>
+            <div class="yt-reply-assistant-label-line"></div>
+            <div class="yt-reply-assistant-label-actions">
+              <span class="yt-reply-assistant-provider-badge">Claude</span>
+              <button class="yt-reply-assistant-icon-btn" title="Regenerer">↻</button>
+              <button class="yt-reply-assistant-icon-btn dismiss-btn" title="Masquer">✕</button>
+            </div>
+          </div>
+          <div class="yt-reply-assistant-list">
+            ${suggestions.map((s, i) => `
+              <div class="yt-reply-assistant-card">
+                <div class="yt-reply-assistant-num">${i+1}</div>
+                <div class="yt-reply-assistant-content">
+                  <div class="yt-reply-assistant-text">${s.text}</div>
+                  <div class="yt-reply-assistant-type">${s.type}</div>
+                </div>
+                <button class="yt-reply-assistant-insert">Inserer</button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        // Update space after content change
+        requestAnimationFrame(() => { portal.updatePos(); requestAnimationFrame(portal.updatePos); });
+
+        portal.el.querySelector('.dismiss-btn')?.addEventListener('click', () => {
+          portal.el.remove();
+          portal.cleanup();
+        });
+      }, 2000);
+    });
+  });
+</script>
+
+</body>
+</html>
