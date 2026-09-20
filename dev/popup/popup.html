@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=400">
+  <title>YT Reply Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===== Onboarding View ===== -->
+    <div id="onboarding" class="view" style="display: none;">
+      <div class="header">
+        <div class="logo">💬</div>
+        <h1>YT Reply Assistant</h1>
+        <p class="subtitle">AI-powered reply suggestions for your YouTube comments</p>
+      </div>
+
+      <div class="onboarding-steps">
+        <div id="step-welcome" class="step active">
+          <p>I'll analyze your recent replies to learn your communication style, then suggest contextual responses for new comments.</p>
+          <div class="info-box">
+            <strong>How it works:</strong>
+            <ul>
+              <li>Scrapes your past replies to learn your tone</li>
+              <li>Fetches video transcripts for context</li>
+              <li>Generates 3 reply suggestions per comment</li>
+              <li>Everything stays local — no data leaves your browser</li>
+            </ul>
+          </div>
+          <button id="btn-start-analysis" class="btn primary full">
+            Analyze my style
+          </button>
+          <button id="btn-skip-analysis" class="btn ghost full">
+            Skip — I'll set it up later
+          </button>
+        </div>
+
+        <div id="step-analyzing" class="step" style="display: none;">
+          <div class="progress-section">
+            <div class="spinner"></div>
+            <p id="analysis-status">Scanning your replies...</p>
+            <div class="progress-bar">
+              <div id="progress-fill" class="progress-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="step-result" class="step" style="display: none;">
+          <div class="result-card">
+            <h3>Style detected ✓</h3>
+            <p id="style-summary"></p>
+            <div id="style-examples" class="examples"></div>
+          </div>
+          <button id="btn-complete" class="btn primary full">
+            Let's go!
+          </button>
+        </div>
+
+        <div id="step-manual" class="step" style="display: none;">
+          <p>Paste 5-10 of your typical YouTube replies (one per line):</p>
+          <textarea id="manual-replies" rows="8" placeholder="Merci pour ton retour ! C'est exactement le genre de cas que j'aborde dans ma prochaine video..."></textarea>
+          <button id="btn-manual-analyze" class="btn primary full">
+            Build my profile
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Settings View ===== -->
+    <div id="settings" class="view" style="display: none;">
+      <div class="header compact">
+        <h1>YT Reply Assistant</h1>
+        <span id="version" class="version">v0.1.0</span>
+      </div>
+
+      <!-- Provider Section -->
+      <section class="section">
+        <h2>AI Provider</h2>
+        <div class="setting-row">
+          <label for="provider-select">Active provider</label>
+          <select id="provider-select">
+            <option value="chrome-ai">Chrome Built-in AI (free)</option>
+            <option value="anthropic">Anthropic — Claude Haiku</option>
+            <option value="openai">OpenAI — GPT-4o mini</option>
+          </select>
+        </div>
+
+        <div id="chrome-ai-status" class="provider-status">
+          <span id="chrome-ai-indicator" class="status-dot"></span>
+          <span id="chrome-ai-text">Checking availability...</span>
+        </div>
+
+        <div id="anthropic-config" class="provider-config" style="display: none;">
+          <div class="setting-row">
+            <label for="anthropic-key">API Key</label>
+            <div class="input-with-action">
+              <input type="password" id="anthropic-key" placeholder="sk-ant-...">
+              <button id="btn-test-anthropic" class="btn small">Test</button>
+            </div>
+          </div>
+          <div id="anthropic-status" class="provider-status" style="display: none;"></div>
+        </div>
+
+        <div id="openai-config" class="provider-config" style="display: none;">
+          <div class="setting-row">
+            <label for="openai-key">API Key</label>
+            <div class="input-with-action">
+              <input type="password" id="openai-key" placeholder="sk-...">
+              <button id="btn-test-openai" class="btn small">Test</button>
+            </div>
+          </div>
+          <div id="openai-status" class="provider-status" style="display: none;"></div>
+        </div>
+      </section>
+
+      <!-- Style Section -->
+      <section class="section">
+        <h2>Reply Style</h2>
+        <div id="style-info">
+          <p id="style-info-text" class="muted">Loading...</p>
+        </div>
+        <button id="btn-reanalyze" class="btn ghost full">Re-analyze my style</button>
+      </section>
+
+      <!-- Cache Section -->
+      <section class="section">
+        <h2>Transcript Cache</h2>
+        <p id="cache-info" class="muted">Loading...</p>
+        <button id="btn-clear-cache" class="btn ghost full">Clear cache</button>
+      </section>
+
+      <!-- About Section -->
+      <section class="section about">
+        <p class="muted">YT Reply Assistant v0.1.0</p>
+        <p class="muted">100% local — your data never leaves your browser</p>
+      </section>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
