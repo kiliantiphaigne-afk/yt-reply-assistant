@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="fr" dark>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TEST — Placement des suggestions (simulation DOM YouTube Studio)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ================================================================
+       SIMULATION YouTube Studio — DOM structure fidelement repliquee
+       ================================================================ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0f0f0f;
+      color: #e0e0e0;
+      font-family: 'Roboto', sans-serif;
+      min-height: 100vh;
+    }
+
+    .preview-banner {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: #f59e0b; color: #000;
+      text-align: center; padding: 8px;
+      font-size: 12px; font-weight: 500; z-index: 9999;
+    }
+
+    /* YouTube Studio sidebar simulation */
+    .yt-studio-layout {
+      display: flex;
+      padding-top: 40px;
+    }
+    .yt-studio-sidebar {
+      width: 240px;
+      background: #0f0f0f;
+      border-right: 1px solid #1e1e1e;
+      min-height: 100vh;
+      padding: 16px;
+      flex-shrink: 0;
+    }
+    .yt-studio-sidebar .nav-item {
+      padding: 10px 16px;
+      color: #aaa;
+      font-size: 13px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .yt-studio-sidebar .nav-item.active {
+      background: #272727;
+      color: #fff;
+    }
+
+    .yt-studio-main {
+      flex: 1;
+      max-width: 900px;
+      padding: 24px 32px;
+    }
+
+    .yt-studio-header {
+      font-size: 20px;
+      font-weight: 500;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .yt-studio-subheader {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 24px;
+    }
+
+    /* ================================================================
+       SIMULATION ytcp-comment-thread / ytcp-comment
+       Ce DOM replique le vrai YouTube Studio:
+       - ytcp-comment-thread a overflow: hidden (c'est le bug)
+       - ytcp-comment est a l'interieur
+       - les suggestions doivent etre insereees en SIBLING apres ytcp-comment
+       ================================================================ */
+
+    /* Thread container — simule le vrai overflow:hidden de YouTube Studio */
+    ytcp-comment-thread {
+      display: block;
+      border-bottom: 1px solid #1a1a1a;
+      /* YouTube Studio applique souvent: */
+      overflow: hidden;
+    }
+
+    /* Comment element — aussi avec overflow contraints */
+    ytcp-comment {
+      display: block;
+      padding: 16px 0;
+      overflow: hidden; /* LE BUG: c'est ce qui clippait les suggestions */
+    }
+
+    .comment-main {
+      display: flex;
+      gap: 14px;
+    }
+
+    .avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 600; color: #fff;
+      flex-shrink: 0;
+    }
+
+    .comment-body { flex: 1; }
+
+    #author-text {
+      font-size: 13px; font-weight: 500; color: #aaa;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .comment-date { font-size: 11px; color: #484848; font-weight: 400; }
+
+    #content-text {
+      font-size: 14px; color: #e0e0e0;
+      line-height: 1.55; margin-top: 6px; margin-bottom: 10px;
+    }
+
+    /* Actions bar (toolbar) */
+    #toolbar {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .yt-btn {
+      background: none; border: none; color: #606060;
+      font-size: 12px; padding: 6px 10px; border-radius: 16px;
+      cursor: pointer; display: flex; align-items: center; gap: 5px;
+      transition: background 150ms, color 150ms; font-family: inherit;
+    }
+    .yt-btn:hover { background: #272727; color: #e0e0e0; }
+
+    /* Reply section simulation */
+    #replies {
+      padding-left: 54px;
+      margin-top: 8px;
+    }
+    .reply-item {
+      padding: 8px 0;
+      font-size: 13px;
+      color: #888;
+    }
+
+    /* ================================================================
+       Debug info overlay — shows DOM structure
+       ================================================================ */
+    .debug-overlay {
+      position: fixed; bottom: 16px; right: 16px;
+      background: #1a1a1a; border: 1px solid #333;
+      border-radius: 10px; padding: 14px;
+      font-size: 11px; color: #888;
+      max-width: 280px; z-index: 9998;
+    }
+    .debug-overlay code {
+      color: #3ea6ff; font-size: 10px;
+    }
+    .debug-overlay .ok { color: #2eb87b; }
+    .debug-overlay .bad { color: #e53935; }
+
+    /* ================================================================
+       Extension CSS — COPIE EXACTE de content.css
+       ================================================================ */
+
+    /* Bouton Generer */
+    .yt-reply-assistant-trigger {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: 14px;
+      background: rgba(62, 166, 255, 0.08);
+      border: 1px solid rgba(62, 166, 255, 0.15);
+      color: #3ea6ff; font-size: 11.5px; font-weight: 500;
+      font-family: 'Roboto', sans-serif;
+      cursor: pointer; transition: background 150ms, border-color 150ms;
+      margin-left: 4px; white-space: nowrap;
+    }
+    .yt-reply-assistant-trigger:hover {
+      background: rgba(62, 166, 255, 0.14);
+      border-color: rgba(62, 166, 255, 0.35);
+    }
+    .yt-reply-assistant-trigger-sparkle { font-size: 12px; }
+
+    .yt-reply-assistant-trigger-loading {
+      background: rgba(62, 166, 255, 0.14) !important;
+      border-color: rgba(62, 166, 255, 0.35) !important;
+    }
+    .yt-reply-assistant-trigger-spinner {
+      display: inline-block; width: 10px; height: 10px;
+      border: 2px solid rgba(62, 166, 255, 0.3);
+      border-top-color: #3ea6ff; border-radius: 50%;
+      animation: yt-ra-spin 0.6s linear infinite;
+    }
+    @keyframes yt-ra-spin { to { transform: rotate(360deg); } }
+
+    /* Suggestions container */
+    .yt-reply-assistant-suggestions {
+      margin: 4px 0 16px 0;
+      padding: 8px 0 8px 54px;
+      font-family: 'Roboto', sans-serif;
+      font-size: 13px; line-height: 1.4;
+      position: relative; z-index: 10;
+      overflow: visible !important;
+      max-height: none !important;
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1;
+      contain: none !important;
+      clip: auto !important;
+      clip-path: none !important;
+      min-height: 40px;
+    }
+
+    /* Label row */
+    .yt-reply-assistant-label {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+    }
+    .yt-reply-assistant-label-text {
+      font-size: 11px; color: #484848; font-weight: 500;
+      letter-spacing: 0.02em; white-space: nowrap;
+    }
+    .yt-reply-assistant-label-line { flex: 1; height: 1px; background: #1e1e1e; }
+    .yt-reply-assistant-label-actions { display: flex; align-items: center; gap: 2px; }
+
+    .yt-reply-assistant-icon-btn {
+      background: none; border: none; color: #333;
+      cursor: pointer; padding: 3px; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 150ms, background 150ms;
+      font-family: inherit; font-size: 13px; line-height: 1;
+    }
+    .yt-reply-assistant-icon-btn:hover { color: #666; background: #1a1a1a; }
+
+    /* Cards */
+    .yt-reply-assistant-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .yt-reply-assistant-card {
+      background: #161616; border: 1px solid #232323;
+      border-radius: 10px; padding: 10px 14px;
+      cursor: pointer;
+      transition: border-color 180ms ease, background-color 180ms ease, transform 80ms ease;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .yt-reply-assistant-card:hover {
+      border-color: rgba(62, 166, 255, 0.25); background: #1a1d22;
+    }
+
+    .yt-reply-assistant-num {
+      width: 22px; height: 22px; border-radius: 6px;
+      background: #1e1e1e; color: #555;
+      font-size: 11px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .yt-reply-assistant-card:hover .yt-reply-assistant-num {
+      background: rgba(62, 166, 255, 0.12); color: #3ea6ff;
+    }
+
+    .yt-reply-assistant-content { flex: 1; min-width: 0; }
+    .yt-reply-assistant-text { font-size: 13px; color: #c0c0c0; line-height: 1.5; }
+    .yt-reply-assistant-card:hover .yt-reply-assistant-text { color: #e0e0e0; }
+
+    .yt-reply-assistant-type { font-size: 10.5px; color: #404040; margin-top: 4px; font-weight: 500; }
+
+    .yt-reply-assistant-insert {
+      opacity: 0; background: #3ea6ff; color: #000;
+      border: none; font-size: 11px; font-weight: 600;
+      padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      white-space: nowrap; transition: opacity 150ms, background 150ms;
+      flex-shrink: 0; align-self: center; font-family: inherit;
+    }
+    .yt-reply-assistant-card:hover .yt-reply-assistant-insert { opacity: 1; }
+
+    .yt-reply-assistant-card.inserted {
+      border-color: rgba(46, 184, 123, 0.25); background: rgba(46, 184, 123, 0.04);
+      pointer-events: none;
+    }
+    .yt-reply-assistant-card.inserted .yt-reply-assistant-num { background: rgba(46, 184, 123, 0.12); color: #2eb87b; }
+    .yt-reply-assistant-card.inserted .yt-reply-assistant-text { color: rgba(46, 184, 123, 0.6); }
+    .yt-reply-assistant-card.inserted .yt-reply-assistant-insert { opacity: 1; background: #2eb87b; pointer-events: none; }
+    .yt-reply-assistant-card.dimmed { opacity: 0.4; pointer-events: none; }
+
+    /* Skeleton */
+    .yt-reply-assistant-loading { display: flex; flex-direction: column; gap: 6px; }
+    .yt-reply-assistant-loading-label { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+    .yt-reply-assistant-loading-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+      background-size: 200% 100%; animation: yt-ra-shimmer 1.8s ease-in-out infinite;
+    }
+    .yt-reply-assistant-loading-bar {
+      width: 100px; height: 8px; border-radius: 3px;
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%; animation: yt-ra-shimmer 1.8s ease-in-out infinite;
+    }
+    .yt-reply-assistant-skeleton-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      background: #161616; border: 1px solid #1e1e1e; border-radius: 10px;
+    }
+    .yt-reply-assistant-skeleton-num { width: 22px; height: 22px; border-radius: 6px; background: #1e1e1e; flex-shrink: 0; }
+    .yt-reply-assistant-skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+    .yt-reply-assistant-skeleton-line {
+      height: 10px;
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%; animation: yt-ra-shimmer 1.8s ease-in-out infinite;
+      border-radius: 4px;
+    }
+    .yt-reply-assistant-skeleton-line:nth-child(1) { width: 90%; }
+    .yt-reply-assistant-skeleton-line:nth-child(2) { width: 60%; }
+    @keyframes yt-ra-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .yt-reply-assistant-provider-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: #333; margin-left: 8px;
+    }
+
+    /* ================================================================
+       DOM HIGHLIGHTS — bordures pour debug
+       ================================================================ */
+    ytcp-comment-thread.debug-highlight {
+      outline: 1px dashed rgba(229, 57, 53, 0.3);
+      outline-offset: -1px;
+    }
+    ytcp-comment.debug-highlight {
+      outline: 1px dashed rgba(62, 166, 255, 0.3);
+      outline-offset: -1px;
+    }
+    .yt-reply-assistant-suggestions.debug-highlight {
+      outline: 1px dashed rgba(46, 184, 123, 0.4);
+      outline-offset: -1px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="preview-banner">
+  TEST PLACEMENT — Simulation DOM YouTube Studio avec overflow:hidden. Les suggestions sont inserees en SIBLING apres &lt;ytcp-comment&gt;.
+</div>
+
+<div class="yt-studio-layout">
+  <div class="yt-studio-sidebar">
+    <div class="nav-item">Dashboard</div>
+    <div class="nav-item">Contenu</div>
+    <div class="nav-item active">Commentaires</div>
+    <div class="nav-item">Sous-titres</div>
+    <div class="nav-item">Analytics</div>
+  </div>
+
+  <div class="yt-studio-main">
+    <div class="yt-studio-header">Commentaires</div>
+    <div class="yt-studio-subheader">3 commentaires en attente de reponse</div>
+
+    <!-- ================================================================
+         COMMENT 1 — AVEC SUGGESTIONS (etat final apres generation)
+         Structure: thread > comment (overflow:hidden) > ...
+         Suggestions = SIBLING de ytcp-comment, PAS enfant
+         ================================================================ -->
+    <ytcp-comment-thread class="debug-highlight">
+      <ytcp-comment class="debug-highlight">
+        <div class="comment-main">
+          <div class="avatar" style="background: #e85d04;">M</div>
+          <div class="comment-body">
+            <div id="author-text">
+              Maxime Lebrun
+              <span class="comment-date">il y a 2 heures</span>
+            </div>
+            <div id="content-text">
+              Franchement trop bien explique ! Par contre, tu parles de la strategie de prix au debut mais t'as pas vraiment detaille comment tu fixais tes tarifs au tout debut quand t'avais 0 client. C'est ca qui m'interesse le plus perso 🤔
+            </div>
+            <div id="toolbar">
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                12
+              </button>
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                Repondre
+              </button>
+              <!-- PAS de bouton Generer ici car les suggestions sont deja affichees -->
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+
+      <!-- SUGGESTIONS — en SIBLING de ytcp-comment, dans ytcp-comment-thread -->
+      <div class="yt-reply-assistant-suggestions debug-highlight" data-comment-id="cmt_test1">
+        <div class="yt-reply-assistant-label">
+          <span class="yt-reply-assistant-label-text">💬 Suggestions IA</span>
+          <div class="yt-reply-assistant-label-line"></div>
+          <div class="yt-reply-assistant-label-actions">
+            <span class="yt-reply-assistant-provider-badge">Claude</span>
+            <button class="yt-reply-assistant-icon-btn" title="Regenerer">↻</button>
+            <button class="yt-reply-assistant-icon-btn" title="Masquer">✕</button>
+          </div>
+        </div>
+        <div class="yt-reply-assistant-list">
+          <div class="yt-reply-assistant-card">
+            <div class="yt-reply-assistant-num">1</div>
+            <div class="yt-reply-assistant-content">
+              <div class="yt-reply-assistant-text">Merci Maxime ! Super question 😊 Au tout debut, j'ai commence avec un tarif plancher juste pour avoir mes premiers clients et des retours. Genre 50% moins cher que ce que je visais. Apres 5-6 clients, j'ai augmente progressivement. Tu veux que je fasse une video dediee la-dessus ?</div>
+              <div class="yt-reply-assistant-type">Reponse directe + question de relance</div>
+            </div>
+            <button class="yt-reply-assistant-insert">Inserer</button>
+          </div>
+          <div class="yt-reply-assistant-card">
+            <div class="yt-reply-assistant-num">2</div>
+            <div class="yt-reply-assistant-content">
+              <div class="yt-reply-assistant-text">Top question ! Pour les premiers tarifs, j'ai utilise la methode "anchor pricing" — tu regardes ce que fait la concurrence et tu te positionnes 20% en dessous pour decoller. J'en parle en detail dans ma video "Fixer ses prix" si ca t'interesse !</div>
+              <div class="yt-reply-assistant-type">Reponse approfondie + lien video</div>
+            </div>
+            <button class="yt-reply-assistant-insert">Inserer</button>
+          </div>
+          <div class="yt-reply-assistant-card">
+            <div class="yt-reply-assistant-num">3</div>
+            <div class="yt-reply-assistant-content">
+              <div class="yt-reply-assistant-text">Ah bonne question ! En gros : tarif bas au debut + augmentation tous les 3 mois. Ca marche bien ?</div>
+              <div class="yt-reply-assistant-type">Reponse courte + micro-question</div>
+            </div>
+            <button class="yt-reply-assistant-insert">Inserer</button>
+          </div>
+        </div>
+      </div>
+    </ytcp-comment-thread>
+
+
+    <!-- ================================================================
+         COMMENT 2 — AVEC BOUTON GENERER (etat initial)
+         ================================================================ -->
+    <ytcp-comment-thread>
+      <ytcp-comment>
+        <div class="comment-main">
+          <div class="avatar" style="background: #7b2cbf;">S</div>
+          <div class="comment-body">
+            <div id="author-text">
+              Sarah Dev
+              <span class="comment-date">il y a 5 heures</span>
+            </div>
+            <div id="content-text">
+              Est-ce que t'utilises un framework particulier ou c'est du custom ? Je suis dev et je cherche a lancer un SaaS aussi mais je sais pas trop par ou commencer cote technique 🤷‍♀️
+            </div>
+            <div id="toolbar">
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                8
+              </button>
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                Repondre
+              </button>
+              <!-- Bouton Generer pill bleue -->
+              <button class="yt-reply-assistant-trigger" id="trigger-demo">
+                <span class="yt-reply-assistant-trigger-sparkle">✨</span> Generer
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+    </ytcp-comment-thread>
+
+
+    <!-- ================================================================
+         COMMENT 3 — ETAT LOADING (skeleton)
+         ================================================================ -->
+    <ytcp-comment-thread>
+      <ytcp-comment>
+        <div class="comment-main">
+          <div class="avatar" style="background: #0077b6;">A</div>
+          <div class="comment-body">
+            <div id="author-text">
+              Alex Martin
+              <span class="comment-date">il y a 8 heures</span>
+            </div>
+            <div id="content-text">
+              J'ai fait exactement le meme parcours mais en e-commerce. Le passage de side project a full-time c'est un sacre step. Comment t'as gere financierement la transition ?
+            </div>
+            <div id="toolbar">
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                21
+              </button>
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                Repondre
+              </button>
+              <!-- Loading state du bouton -->
+              <button class="yt-reply-assistant-trigger yt-reply-assistant-trigger-loading" disabled>
+                <span class="yt-reply-assistant-trigger-spinner"></span> Generation...
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+
+      <!-- Skeleton loading — en SIBLING -->
+      <div class="yt-reply-assistant-suggestions" data-comment-id="cmt_test3">
+        <div class="yt-reply-assistant-loading">
+          <div class="yt-reply-assistant-loading-label">
+            <div class="yt-reply-assistant-loading-dot"></div>
+            <div class="yt-reply-assistant-loading-bar"></div>
+          </div>
+          <div class="yt-reply-assistant-skeleton-row">
+            <div class="yt-reply-assistant-skeleton-num"></div>
+            <div class="yt-reply-assistant-skeleton-lines">
+              <div class="yt-reply-assistant-skeleton-line"></div>
+              <div class="yt-reply-assistant-skeleton-line"></div>
+            </div>
+          </div>
+          <div class="yt-reply-assistant-skeleton-row">
+            <div class="yt-reply-assistant-skeleton-num"></div>
+            <div class="yt-reply-assistant-skeleton-lines">
+              <div class="yt-reply-assistant-skeleton-line"></div>
+              <div class="yt-reply-assistant-skeleton-line"></div>
+            </div>
+          </div>
+          <div class="yt-reply-assistant-skeleton-row">
+            <div class="yt-reply-assistant-skeleton-num"></div>
+            <div class="yt-reply-assistant-skeleton-lines">
+              <div class="yt-reply-assistant-skeleton-line"></div>
+              <div class="yt-reply-assistant-skeleton-line"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ytcp-comment-thread>
+
+
+    <!-- ================================================================
+         COMMENT 4 — Un commentaire normal en dessous pour verifier
+         que les suggestions ne "poussent" pas bizarrement
+         ================================================================ -->
+    <ytcp-comment-thread>
+      <ytcp-comment>
+        <div class="comment-main">
+          <div class="avatar" style="background: #2d6a4f;">L</div>
+          <div class="comment-body">
+            <div id="author-text">
+              Lucas Moreau
+              <span class="comment-date">il y a 12 heures</span>
+            </div>
+            <div id="content-text">
+              Trop motivant comme video ! Continue comme ca 🔥🔥🔥
+            </div>
+            <div id="toolbar">
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+                45
+              </button>
+              <button class="yt-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                Repondre
+              </button>
+              <button class="yt-reply-assistant-trigger">
+                <span class="yt-reply-assistant-trigger-sparkle">✨</span> Generer
+              </button>
+            </div>
+          </div>
+        </div>
+      </ytcp-comment>
+    </ytcp-comment-thread>
+
+  </div>
+</div>
+
+<div class="debug-overlay">
+  <strong style="color:#fff;">Structure DOM</strong><br><br>
+  <code>&lt;ytcp-comment-thread&gt;</code> <span class="bad">overflow:hidden</span><br>
+  &nbsp;&nbsp;<code>&lt;ytcp-comment&gt;</code> <span class="bad">overflow:hidden</span><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;comment + toolbar + bouton<br>
+  &nbsp;&nbsp;<code>&lt;/ytcp-comment&gt;</code><br>
+  &nbsp;&nbsp;<code class="ok">&lt;div.suggestions&gt;</code> <span class="ok">SIBLING ✓</span><br>
+  &nbsp;&nbsp;&nbsp;&nbsp;cards de suggestions<br>
+  &nbsp;&nbsp;<code class="ok">&lt;/div.suggestions&gt;</code><br>
+  <code>&lt;/ytcp-comment-thread&gt;</code><br><br>
+  <span class="ok">✓</span> Suggestions hors du overflow:hidden<br>
+  <span class="ok">✓</span> Visible dans le flow normal
+</div>
+
+<script>
+  // Demo: click "Generer" on comment 2 → simulate generation
+  const triggerBtn = document.getElementById('trigger-demo');
+  if (triggerBtn) {
+    triggerBtn.addEventListener('click', () => {
+      // Loading state
+      triggerBtn.disabled = true;
+      triggerBtn.classList.add('yt-reply-assistant-trigger-loading');
+      triggerBtn.innerHTML = '<span class="yt-reply-assistant-trigger-spinner"></span> Generation...';
+
+      const comment = triggerBtn.closest('ytcp-comment');
+      const thread = triggerBtn.closest('ytcp-comment-thread');
+
+      // Insert skeleton as sibling AFTER ytcp-comment
+      const skeleton = document.createElement('div');
+      skeleton.className = 'yt-reply-assistant-suggestions';
+      skeleton.innerHTML = `
+        <div class="yt-reply-assistant-loading">
+          <div class="yt-reply-assistant-loading-label">
+            <div class="yt-reply-assistant-loading-dot"></div>
+            <div class="yt-reply-assistant-loading-bar"></div>
+          </div>
+          <div class="yt-reply-assistant-skeleton-row"><div class="yt-reply-assistant-skeleton-num"></div><div class="yt-reply-assistant-skeleton-lines"><div class="yt-reply-assistant-skeleton-line"></div><div class="yt-reply-assistant-skeleton-line"></div></div></div>
+          <div class="yt-reply-assistant-skeleton-row"><div class="yt-reply-assistant-skeleton-num"></div><div class="yt-reply-assistant-skeleton-lines"><div class="yt-reply-assistant-skeleton-line"></div><div class="yt-reply-assistant-skeleton-line"></div></div></div>
+          <div class="yt-reply-assistant-skeleton-row"><div class="yt-reply-assistant-skeleton-num"></div><div class="yt-reply-assistant-skeleton-lines"><div class="yt-reply-assistant-skeleton-line"></div><div class="yt-reply-assistant-skeleton-line"></div></div></div>
+        </div>
+      `;
+
+      // KEY: insert as sibling after ytcp-comment, NOT inside it
+      comment.after(skeleton);
+
+      // Remove trigger button
+      triggerBtn.remove();
+
+      // Simulate AI response after 2s
+      setTimeout(() => {
+        skeleton.innerHTML = `
+          <div class="yt-reply-assistant-label">
+            <span class="yt-reply-assistant-label-text">💬 Suggestions IA</span>
+            <div class="yt-reply-assistant-label-line"></div>
+            <div class="yt-reply-assistant-label-actions">
+              <span class="yt-reply-assistant-provider-badge">Claude</span>
+              <button class="yt-reply-assistant-icon-btn" title="Regenerer">↻</button>
+              <button class="yt-reply-assistant-icon-btn" title="Masquer">✕</button>
+            </div>
+          </div>
+          <div class="yt-reply-assistant-list">
+            <div class="yt-reply-assistant-card">
+              <div class="yt-reply-assistant-num">1</div>
+              <div class="yt-reply-assistant-content">
+                <div class="yt-reply-assistant-text">Hey Sarah ! J'utilise Next.js + Supabase pour le SaaS. C'est le combo le plus rapide pour un dev solo. Si tu veux, j'ai fait une video "Stack technique SaaS" qui detaille tout 🚀</div>
+                <div class="yt-reply-assistant-type">Reponse directe + question de relance</div>
+              </div>
+              <button class="yt-reply-assistant-insert">Inserer</button>
+            </div>
+            <div class="yt-reply-assistant-card">
+              <div class="yt-reply-assistant-num">2</div>
+              <div class="yt-reply-assistant-content">
+                <div class="yt-reply-assistant-text">Bonne question ! Perso j'ai commence custom puis migre sur Next.js quand le projet a grandi. Mon conseil : commence simple, itere vite. Tu bosses sur quoi comme SaaS ?</div>
+                <div class="yt-reply-assistant-type">Reponse approfondie + lien video</div>
+              </div>
+              <button class="yt-reply-assistant-insert">Inserer</button>
+            </div>
+            <div class="yt-reply-assistant-card">
+              <div class="yt-reply-assistant-num">3</div>
+              <div class="yt-reply-assistant-content">
+                <div class="yt-reply-assistant-text">Next.js + Supabase, ca envoie ! C'est quoi ton idee de SaaS ?</div>
+                <div class="yt-reply-assistant-type">Reponse courte + micro-question</div>
+              </div>
+              <button class="yt-reply-assistant-insert">Inserer</button>
+            </div>
+          </div>
+        `;
+      }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>

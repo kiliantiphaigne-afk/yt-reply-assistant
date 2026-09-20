@@ -391,6 +391,40 @@
     return container.querySelector(`.${SUGGESTIONS_CLASS}`);
   }
 
+  /**
+   * Insert an element and verify it's actually visible.
+   * Returns true if the element has a non-zero rendered height.
+   */
+  function insertAndVerify(el, strategy) {
+    try {
+      strategy();
+      // Force layout calculation
+      void el.offsetHeight;
+      // Check: is it actually rendering? (height > 0 means visible)
+      return el.offsetHeight > 0;
+    } catch (e) {
+      LOG('Insert strategy failed:', e.message);
+      return false;
+    }
+  }
+
+  /**
+   * Force overflow:visible on all ancestors up to N levels.
+   * This ensures nothing clips our suggestions.
+   */
+  function forceParentOverflow(el, levels = 6) {
+    let parent = el.parentElement;
+    for (let i = 0; i < levels; i++) {
+      if (!parent || parent === document.body || parent === document.documentElement) break;
+      const style = getComputedStyle(parent);
+      if (style.overflow === 'hidden' || style.overflowY === 'hidden') {
+        parent.style.setProperty('overflow', 'visible', 'important');
+        LOG('Forced overflow:visible on', parent.tagName, parent.id || parent.className);
+      }
+      parent = parent.parentElement;
+    }
+  }
+
   function createSuggestionsContainer(container, commentId) {
     // Remove any existing suggestions for this comment
     const existing = findExistingSuggestions(container, commentId);
@@ -402,18 +436,47 @@
     el._commentContainer = container; // Store ref for regeneration
     el.innerHTML = createSkeletonHTML();
 
-    // Insert as SIBLING after the comment container.
-    // This avoids overflow:hidden clipping from YouTube Studio's comment elements.
-    try {
-      container.after(el);
-    } catch {
-      // Fallback: try parentNode.insertBefore
-      if (container.parentNode) {
-        container.parentNode.insertBefore(el, container.nextSibling);
-      } else {
-        // Last resort: append inside container
-        container.appendChild(el);
+    // ---------------------------------------------------------------
+    // Multi-strategy insertion: try from safest to most invasive.
+    // YouTube Studio uses Web Components (Polymer) with Shadow DOM,
+    // so some insertion points may not render our element.
+    // ---------------------------------------------------------------
+
+    let inserted = false;
+
+    // Strategy 1: Sibling of the comment container (avoids overflow:hidden)
+    if (!inserted) {
+      inserted = insertAndVerify(el, () => container.after(el));
+      if (inserted) LOG('Suggestions insereees: sibling apres container');
+    }
+
+    // Strategy 2: Sibling of the parent thread (one level up)
+    if (!inserted && container.parentElement) {
+      inserted = insertAndVerify(el, () => container.parentElement.after(el));
+      if (inserted) LOG('Suggestions insereees: sibling apres thread parent');
+    }
+
+    // Strategy 3: Inside the container, after the toolbar/actions bar
+    if (!inserted) {
+      const { parent, after } = findInsertionPoint(container);
+      inserted = insertAndVerify(el, () => {
+        if (after) {
+          insertAfter(el, after);
+        } else {
+          parent.appendChild(el);
+        }
+      });
+      if (inserted) {
+        forceParentOverflow(el);
+        LOG('Suggestions insereees: inside container (avec force overflow)');
       }
+    }
+
+    // Strategy 4: Direct append to container + force overflow on all ancestors
+    if (!inserted) {
+      container.appendChild(el);
+      forceParentOverflow(el);
+      LOG('Suggestions insereees: fallback append + force overflow');
     }
 
     return el;

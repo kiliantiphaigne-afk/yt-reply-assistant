@@ -78,8 +78,8 @@ html:not([dark]) .yt-reply-assistant-trigger:hover,
 /* ---------- Container ---------- */
 
 .yt-reply-assistant-suggestions {
-  margin: 4px 0 12px 54px;
-  padding: 8px 0;
+  margin: 4px 0 16px 0;
+  padding: 8px 0 8px 54px;
   font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
   line-height: 1.4;
@@ -90,6 +90,11 @@ html:not([dark]) .yt-reply-assistant-trigger:hover,
   display: block !important;
   visibility: visible !important;
   opacity: 1;
+  /* Guarantee rendering regardless of parent constraints */
+  contain: none !important;
+  clip: auto !important;
+  clip-path: none !important;
+  min-height: 40px;
 }
 
 /* ---------- Label row ---------- */
