@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="fr" dark>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YT Reply Assistant — Suggestions en contexte</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0f0f0f;
+      color: #e0e0e0;
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ===== BANNIERE PREVIEW ===== */
+    .preview-banner {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #f59e0b;
+      color: #000;
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      z-index: 9999;
+      letter-spacing: 0.01em;
+    }
+
+    /* ===== LAYOUT YOUTUBE STUDIO ===== */
+    .yt-studio-shell {
+      max-width: 900px;
+      margin: 60px auto 80px;
+      padding: 0 24px;
+    }
+
+    /* Header faux YouTube Studio */
+    .yt-page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 0 24px;
+      border-bottom: 1px solid #272727;
+      margin-bottom: 24px;
+    }
+    .yt-page-header h1 {
+      font-size: 20px;
+      font-weight: 500;
+      color: #f1f1f1;
+    }
+    .yt-video-context {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 0 20px;
+    }
+    .yt-video-thumb {
+      width: 120px;
+      height: 68px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #333;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    .yt-video-info h2 {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e0e0e0;
+      margin-bottom: 4px;
+    }
+    .yt-video-info span {
+      font-size: 12px;
+      color: #606060;
+    }
+
+    /* Filtres tabs (cosmétiques) */
+    .yt-filters {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #272727;
+      margin-bottom: 4px;
+    }
+    .yt-filter-tab {
+      padding: 12px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #606060;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 150ms;
+    }
+    .yt-filter-tab:hover { color: #aaa; }
+    .yt-filter-tab.active {
+      color: #f1f1f1;
+      border-bottom-color: #f1f1f1;
+    }
+
+    /* ===== COMMENTAIRE ===== */
+    .comment-item {
+      padding: 20px 0;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .comment-item:last-child { border-bottom: none; }
+
+    .comment-main {
+      display: flex;
+      gap: 14px;
+    }
+    .comment-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .comment-body { flex: 1; min-width: 0; }
+    .comment-author {
+      font-size: 13px;
+      font-weight: 500;
+      color: #aaa;
+      margin-bottom: 1px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .comment-date {
+      font-size: 11px;
+      color: #484848;
+      font-weight: 400;
+    }
+    .comment-text {
+      font-size: 14px;
+      color: #e0e0e0;
+      line-height: 1.55;
+      margin-top: 6px;
+      margin-bottom: 10px;
+    }
+
+    /* Actions YouTube natives */
+    .comment-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .yt-action-btn {
+      background: none;
+      border: none;
+      color: #606060;
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 150ms, color 150ms;
+      font-family: inherit;
+    }
+    .yt-action-btn:hover {
+      background: #272727;
+      color: #e0e0e0;
+    }
+    .yt-action-btn svg { flex-shrink: 0; }
+
+    /* ===== ZONE SUGGESTIONS (notre extension) ===== */
+    .suggestions-zone {
+      margin-top: 12px;
+      margin-left: 54px; /* Aligné avec le texte du commentaire (après l'avatar) */
+    }
+
+    /* Label discret */
+    .suggestions-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .suggestions-label-text {
+      font-size: 11px;
+      color: #484848;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+    .suggestions-label-line {
+      flex: 1;
+      height: 1px;
+      background: #1e1e1e;
+    }
+    .suggestions-label-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .suggestion-icon-btn {
+      background: none;
+      border: none;
+      color: #333;
+      cursor: pointer;
+      padding: 3px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 150ms, background 150ms;
+    }
+    .suggestion-icon-btn:hover {
+      color: #666;
+      background: #1a1a1a;
+    }
+
+    /* Cartes de suggestion */
+    .suggestions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .suggestion-card {
+      background: #161616;
+      border: 1px solid #232323;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: border-color 180ms ease, background-color 180ms ease, transform 80ms ease;
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .suggestion-card:hover {
+      border-color: #3ea6ff40;
+      background: #1a1d22;
+    }
+    .suggestion-card:active {
+      transform: scale(0.995);
+    }
+
+    /* Numéro de suggestion */
+    .suggestion-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: #1e1e1e;
+      color: #555;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+      transition: background 180ms, color 180ms;
+    }
+    .suggestion-card:hover .suggestion-num {
+      background: rgba(62, 166, 255, 0.12);
+      color: #3ea6ff;
+    }
+
+    .suggestion-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .suggestion-text {
+      font-size: 13px;
+      color: #c0c0c0;
+      line-height: 1.5;
+      transition: color 150ms;
+    }
+    .suggestion-card:hover .suggestion-text {
+      color: #e0e0e0;
+    }
+    .suggestion-type {
+      font-size: 10.5px;
+      color: #404040;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+    .suggestion-card:hover .suggestion-type {
+      color: #555;
+    }
+
+    /* Bouton insérer (apparaît au hover) */
+    .suggestion-insert {
+      opacity: 0;
+      background: #3ea6ff;
+      color: #000;
+      border: none;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 150ms, background 150ms;
+      flex-shrink: 0;
+      align-self: center;
+      font-family: inherit;
+    }
+    .suggestion-card:hover .suggestion-insert {
+      opacity: 1;
+    }
+    .suggestion-insert:hover {
+      background: #60b8ff;
+    }
+
+    /* ===== ÉTAT: LOADING ===== */
+    .suggestions-loading {
+      margin-top: 12px;
+      margin-left: 54px;
+    }
+    .skeleton-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: #161616;
+      border: 1px solid #1e1e1e;
+      border-radius: 10px;
+      margin-bottom: 6px;
+    }
+    .skeleton-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: #1e1e1e;
+      flex-shrink: 0;
+    }
+    .skeleton-lines {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .skeleton-line {
+      height: 10px;
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s ease-in-out infinite;
+      border-radius: 4px;
+    }
+    .skeleton-line:nth-child(1) { width: 90%; }
+    .skeleton-line:nth-child(2) { width: 60%; }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .skeleton-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .skeleton-label-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s ease-in-out infinite;
+    }
+    .skeleton-label-bar {
+      width: 100px;
+      height: 8px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s ease-in-out infinite;
+    }
+
+    /* ===== ÉTAT: SUGGESTION INSÉRÉE ===== */
+    .suggestion-card.inserted {
+      border-color: #2eb87b40;
+      background: rgba(46, 184, 123, 0.04);
+    }
+    .suggestion-card.inserted .suggestion-num {
+      background: rgba(46, 184, 123, 0.12);
+      color: #2eb87b;
+    }
+    .suggestion-card.inserted .suggestion-text {
+      color: #2eb87b90;
+    }
+    .suggestion-card.inserted .suggestion-insert {
+      opacity: 1;
+      background: #2eb87b;
+      pointer-events: none;
+    }
+
+    /* Zone de réponse YouTube (simulée) */
+    .reply-zone {
+      margin-top: 14px;
+      margin-left: 54px;
+      display: flex;
+      gap: 10px;
+    }
+    .reply-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #3ea6ff;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #000;
+    }
+    .reply-input-area {
+      flex: 1;
+    }
+    .reply-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #272727;
+      color: #e0e0e0;
+      font-size: 13px;
+      padding: 6px 0;
+      outline: none;
+      font-family: inherit;
+      line-height: 1.5;
+    }
+    .reply-input:focus {
+      border-bottom-color: #3ea6ff;
+    }
+    .reply-input::placeholder {
+      color: #484848;
+    }
+    .reply-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .reply-btn-cancel {
+      background: none;
+      border: none;
+      color: #aaa;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 14px;
+      border-radius: 18px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .reply-btn-cancel:hover { background: #272727; }
+    .reply-btn-submit {
+      background: #3ea6ff;
+      border: none;
+      color: #0f0f0f;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: 18px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .reply-btn-submit:hover { background: #60b8ff; }
+
+    /* ===== ÉTAT: DISMISSED ===== */
+    .dismissed-hint {
+      margin-top: 12px;
+      margin-left: 54px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #333;
+      font-size: 11px;
+    }
+    .dismissed-hint button {
+      background: none;
+      border: none;
+      color: #484848;
+      font-size: 11px;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      font-family: inherit;
+    }
+    .dismissed-hint button:hover { color: #666; }
+
+    /* ===== PROVIDER BADGE ===== */
+    .provider-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: #333;
+      margin-left: 8px;
+    }
+    .provider-badge svg { opacity: 0.4; }
+
+    /* ===== SECTION LABELS ===== */
+    .mockup-section-label {
+      text-align: center;
+      color: #333;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      padding: 28px 0 8px;
+      border-top: 1px dashed #1e1e1e;
+      margin-top: 8px;
+    }
+    .mockup-section-label:first-of-type {
+      border-top: none;
+      margin-top: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Bannière preview -->
+  <div class="preview-banner">
+    PREVIEW — Aperçu visuel des suggestions inline dans YouTube Studio. Non fonctionnel.
+  </div>
+
+  <div class="yt-studio-shell">
+
+    <!-- Header faux YouTube Studio -->
+    <div class="yt-page-header">
+      <h1>Commentaires</h1>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="background: rgba(62,166,255,0.08); border: 1px solid rgba(62,166,255,0.2); padding: 3px 10px; border-radius: 99px; font-size: 11px; color: #3ea6ff; font-weight: 500; display: flex; align-items: center; gap: 5px;">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1.5C4.41 1.5 1.5 4.41 1.5 8s2.91 6.5 6.5 6.5 6.5-2.91 6.5-6.5S11.59 1.5 8 1.5zm0 11.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm.5-8H7v4l3.5 2.1.75-1.23-2.75-1.63V5z" fill="#3ea6ff"/></svg>
+          YT Reply Assistant actif
+        </div>
+      </div>
+    </div>
+
+    <!-- Contexte vidéo -->
+    <div class="yt-video-context">
+      <div class="yt-video-thumb">▶</div>
+      <div class="yt-video-info">
+        <h2>Comment j'ai transformé mon side project en business à 10K/mois</h2>
+        <span>Publiée il y a 3 jours · 45 287 vues · 312 commentaires</span>
+      </div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="yt-filters">
+      <div class="yt-filter-tab active">Non lus (18)</div>
+      <div class="yt-filter-tab">Retenus pour examen (2)</div>
+      <div class="yt-filter-tab">Tous</div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- COMMENTAIRE 1 : Suggestions chargées (normal) -->
+    <!-- ============================================= -->
+    <div class="mockup-section-label">État 1 — Suggestions prêtes (clic pour insérer)</div>
+
+    <div class="comment-item">
+      <div class="comment-main">
+        <div class="comment-avatar" style="background: #e85d04;">M</div>
+        <div class="comment-body">
+          <div class="comment-author">
+            Maxime Lebrun
+            <span class="comment-date">il y a 2 heures</span>
+          </div>
+          <div class="comment-text">
+            Franchement trop bien expliqué ! Par contre, tu parles de la stratégie de prix au début mais t'as pas vraiment détaillé comment tu fixais tes tarifs au tout début quand t'avais 0 client. C'est ça qui m'intéresse le plus perso 🤔
+          </div>
+          <div class="comment-actions">
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+              12
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+              Répondre
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ★ SUGGESTIONS DE L'EXTENSION ★ -->
+      <div class="suggestions-zone">
+        <div class="suggestions-label">
+          <span class="suggestions-label-text">💬 Suggestions IA</span>
+          <div class="suggestions-label-line"></div>
+          <div class="suggestions-label-actions">
+            <button class="suggestion-icon-btn" title="Régénérer">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M13.65 2.35A7.96 7.96 0 008 0C3.58 0 .01 3.58.01 8S3.58 16 8 16c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 018 14 6 6 0 012 8a6 6 0 016-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z"/></svg>
+            </button>
+            <button class="suggestion-icon-btn" title="Masquer">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M12.3 3.7L8 8l4.3 4.3-1 1L7 9l-4.3 4.3-1-1L6 8 1.7 3.7l1-1L7 7l4.3-4.3z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="suggestions-list">
+          <!-- Suggestion 1 -->
+          <div class="suggestion-card">
+            <div class="suggestion-num">1</div>
+            <div class="suggestion-content">
+              <div class="suggestion-text">Ah super question Maxime ! En fait au tout début je faisais du "value-based pricing" — je demandais aux prospects combien ils perdraient sans solution et je prenais 10% de ça. Tu veux que je fasse une vidéo dédiée sur la stratégie de pricing ?</div>
+              <div class="suggestion-type">Réponse directe + question de relance</div>
+            </div>
+            <button class="suggestion-insert">Insérer</button>
+          </div>
+
+          <!-- Suggestion 2 -->
+          <div class="suggestion-card">
+            <div class="suggestion-num">2</div>
+            <div class="suggestion-content">
+              <div class="suggestion-text">Merci ! Pour les tarifs au début, j'en parle rapidement à 12:34 dans la vidéo mais c'est vrai que j'aurais pu creuser. En gros je suis passé de 50€/mois à 200€/mois en 6 mois juste en testant différents prix. Le truc contre-intuitif c'est qu'en montant le prix j'ai eu PLUS de clients 😅 Quel est ton side project toi ?</div>
+              <div class="suggestion-type">Réponse approfondie + lien vidéo</div>
+            </div>
+            <button class="suggestion-insert">Insérer</button>
+          </div>
+
+          <!-- Suggestion 3 -->
+          <div class="suggestion-card">
+            <div class="suggestion-num">3</div>
+            <div class="suggestion-content">
+              <div class="suggestion-text">Bien vu, c'est clairement le point que j'aurais dû plus détailler 👍 T'es sur quel type de projet toi ?</div>
+              <div class="suggestion-type">Réponse courte + micro-question</div>
+            </div>
+            <button class="suggestion-insert">Insérer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ============================================= -->
+    <!-- COMMENTAIRE 2 : Suggestion cliquée → insérée  -->
+    <!-- ============================================= -->
+    <div class="mockup-section-label">État 2 — Suggestion insérée (champ de réponse pré-rempli)</div>
+
+    <div class="comment-item">
+      <div class="comment-main">
+        <div class="comment-avatar" style="background: #7b2cbf;">S</div>
+        <div class="comment-body">
+          <div class="comment-author">
+            Sarah Dev
+            <span class="comment-date">il y a 5 heures</span>
+          </div>
+          <div class="comment-text">
+            Est-ce que t'utilises un framework particulier ou c'est du custom ? Je suis dev et je cherche à lancer un SaaS aussi mais je sais pas trop par où commencer côté technique
+          </div>
+          <div class="comment-actions">
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+              8
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+              Répondre
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Suggestions avec une insérée -->
+      <div class="suggestions-zone">
+        <div class="suggestions-label">
+          <span class="suggestions-label-text">💬 Suggestions IA</span>
+          <div class="suggestions-label-line"></div>
+          <span class="provider-badge">
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+            Claude
+          </span>
+        </div>
+
+        <div class="suggestions-list">
+          <div class="suggestion-card" style="opacity: 0.4;">
+            <div class="suggestion-num">1</div>
+            <div class="suggestion-content">
+              <div class="suggestion-text">Next.js + Supabase pour le MVP, c'est le combo que je recommande…</div>
+            </div>
+          </div>
+
+          <div class="suggestion-card inserted">
+            <div class="suggestion-num">✓</div>
+            <div class="suggestion-content">
+              <div class="suggestion-text">J'utilise Next.js + PostgreSQL ! Honnêtement, commence simple — un landing page + waitlist, valide l'idée avant de coder 6 mois dans le vide. C'est l'erreur que j'ai faite au début 😅 T'as déjà une idée de marché ou tu cherches encore ?</div>
+              <div class="suggestion-type" style="color: #2eb87b80;">✓ Insérée dans le champ de réponse</div>
+            </div>
+            <button class="suggestion-insert" style="opacity: 1; background: #2eb87b; pointer-events: none;">Insérée</button>
+          </div>
+
+          <div class="suggestion-card" style="opacity: 0.4;">
+            <div class="suggestion-num">3</div>
+            <div class="suggestion-content">
+              <div class="suggestion-text">Trop bien que tu veuilles te lancer ! Le framework importe peu…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zone de réponse YouTube (pré-remplie) -->
+      <div class="reply-zone">
+        <div class="reply-avatar">K</div>
+        <div class="reply-input-area">
+          <input type="text" class="reply-input" value="J'utilise Next.js + PostgreSQL ! Honnêtement, commence simple — un landing page + waitlist, valide l'idée avant de coder 6 mois dans le vide. C'est l'erreur que j'ai faite au début 😅 T'as déjà une idée de marché ou tu cherches encore ?" />
+          <div class="reply-actions">
+            <button class="reply-btn-cancel">Annuler</button>
+            <button class="reply-btn-submit">Répondre</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ============================================= -->
+    <!-- COMMENTAIRE 3 : En cours de chargement         -->
+    <!-- ============================================= -->
+    <div class="mockup-section-label">État 3 — Chargement (skeleton animation)</div>
+
+    <div class="comment-item">
+      <div class="comment-main">
+        <div class="comment-avatar" style="background: #0077b6;">A</div>
+        <div class="comment-body">
+          <div class="comment-author">
+            Alex Martin
+            <span class="comment-date">il y a 8 heures</span>
+          </div>
+          <div class="comment-text">
+            J'ai fait exactement le même parcours mais en e-commerce. Le passage de side project à full-time c'est un sacré step. Comment t'as géré financièrement la transition ? T'avais un matelas de sécurité ?
+          </div>
+          <div class="comment-actions">
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+              21
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+              Répondre
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div class="suggestions-loading">
+        <div class="skeleton-label">
+          <div class="skeleton-label-dot"></div>
+          <div class="skeleton-label-bar"></div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-num"></div>
+          <div class="skeleton-lines">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+          </div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-num"></div>
+          <div class="skeleton-lines">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+          </div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-num"></div>
+          <div class="skeleton-lines">
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- COMMENTAIRE 4 : Masqué / dismissed             -->
+    <!-- ============================================= -->
+    <div class="mockup-section-label">État 4 — Suggestions masquées</div>
+
+    <div class="comment-item">
+      <div class="comment-main">
+        <div class="comment-avatar" style="background: #606060;">T</div>
+        <div class="comment-body">
+          <div class="comment-author">
+            Thomas G.
+            <span class="comment-date">il y a 12 heures</span>
+          </div>
+          <div class="comment-text">
+            Premier commentaire sur ta chaîne, continue comme ça 💪
+          </div>
+          <div class="comment-actions">
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></svg>
+              3
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></svg>
+            </button>
+            <button class="yt-action-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+              Répondre
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dismissed state -->
+      <div class="dismissed-hint">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="#333"><path d="M8 1.5C4.41 1.5 1.5 4.41 1.5 8s2.91 6.5 6.5 6.5 6.5-2.91 6.5-6.5S11.59 1.5 8 1.5zm0 11.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><path d="M7.25 5h1.5v4h-1.5zM7.25 10h1.5v1.5h-1.5z"/></svg>
+        Suggestions masquées ·
+        <button>Réafficher</button>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
