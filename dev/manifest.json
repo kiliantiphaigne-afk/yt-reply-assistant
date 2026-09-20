@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YT Reply Assistant",
-  "version": "0.1.0",
-  "description": "AI-powered reply suggestions for YouTube Studio comments",
+  "version": "0.2.0",
+  "description": "Suggestions de reponses IA pour les commentaires YouTube Studio",
   "permissions": [
     "storage",
     "activeTab",

@@ -1,146 +1,257 @@
 // =============================================================================
 // YT Reply Assistant — Content Script
-// Injected into studio.youtube.com
-// Detects unreplied comments, injects suggestion UI, handles interactions
+// Injecte dans studio.youtube.com
+// Detecte les commentaires non repondus, affiche des suggestions
 // =============================================================================
 
 (function () {
   'use strict';
 
-  // -------------------------------------------------------------------------
-  // Configuration — YouTube Studio DOM selectors
-  // Centralized here for easy updates when YouTube Studio changes its DOM
-  // -------------------------------------------------------------------------
-  const SELECTORS = {
-    // Comment list containers
-    commentThread: [
-      'ytcp-comment-thread',
-      '[class*="comment-thread"]',
-      '.comment-thread-renderer',
-    ],
-    // Individual comment element
-    comment: [
-      'ytcp-comment',
-      '#comment',
-      '[class*="comment-renderer"]',
-    ],
-    // Comment text content
-    commentText: [
-      '#content-text',
-      '.comment-text',
-      '#plain-text',
-      '[class*="comment-text"]',
-      'yt-formatted-string#content-text',
-    ],
-    // Commenter name
-    commentAuthor: [
-      '#author-text',
-      '.author-text',
-      '#name #text',
-      'a.author-name',
-    ],
-    // Owner badge (indicates channel owner reply)
-    ownerBadge: [
-      '#author-comment-badge',
-      '.owner-badge',
-      '[class*="creator-heart"]',
-      'ytcp-author-comment-badge',
-    ],
-    // Reply section (contains owner replies)
-    replySection: [
-      '#replies',
-      '#loaded-replies',
-      '.replies-renderer',
-      '[class*="replies"]',
-    ],
-    // Reply input field
-    replyInput: [
-      '#contenteditable-root',
-      '#reply-input',
-      '[contenteditable="true"]',
-      'div[aria-label*="reply" i]',
-      'div[aria-label*="reponse" i]',
-      'div[aria-label*="réponse" i]',
-    ],
-    // Reply button (to trigger reply mode)
-    replyButton: [
-      '#reply-button button',
-      '#reply-button',
-      'button[aria-label*="reply" i]',
-      'button[aria-label*="reponse" i]',
-      'button[aria-label*="réponse" i]',
-      '[class*="reply-button"]',
-    ],
-    // Submit reply button
-    submitReply: [
-      '#submit-button button',
-      '#submit-button',
-      'button[aria-label*="submit" i]',
-      'button[aria-label*="envoyer" i]',
-    ],
-    // Video link in comment (to extract videoId)
-    videoLink: [
-      'a[href*="/video/"]',
-      '.video-title a',
-      '#video-title',
-    ],
-  };
-
   const NAMESPACE = 'yt-reply-assistant';
   const PROCESSED_ATTR = `data-${NAMESPACE}-processed`;
   const SUGGESTIONS_CLASS = `${NAMESPACE}-suggestions`;
-  const DEBOUNCE_MS = 500;
+  const DEBOUNCE_MS = 600;
 
   // -------------------------------------------------------------------------
-  // Utilities
+  // Deep DOM traversal (handles Shadow DOM)
   // -------------------------------------------------------------------------
 
-  /** Try multiple selectors, return first match */
-  function querySelector(parent, selectorList) {
-    if (typeof selectorList === 'string') selectorList = [selectorList];
-    for (const sel of selectorList) {
-      try {
-        const el = parent.querySelector(sel);
-        if (el) return el;
-      } catch { /* invalid selector, skip */ }
-    }
-    // Try inside shadow roots
-    const shadows = parent.querySelectorAll('*');
-    for (const el of shadows) {
+  /** Recursively find elements across shadow roots */
+  function deepQueryAll(root, selector) {
+    const results = [];
+    try {
+      root.querySelectorAll(selector).forEach((el) => results.push(el));
+    } catch { /* invalid selector */ }
+
+    // Traverse shadow roots
+    root.querySelectorAll('*').forEach((el) => {
       if (el.shadowRoot) {
-        for (const sel of selectorList) {
-          try {
-            const found = el.shadowRoot.querySelector(sel);
-            if (found) return found;
-          } catch { /* skip */ }
-        }
+        results.push(...deepQueryAll(el.shadowRoot, selector));
       }
+    });
+
+    return results;
+  }
+
+  function deepQuery(root, selector) {
+    const results = deepQueryAll(root, selector);
+    return results[0] || null;
+  }
+
+  /** Try multiple selectors, return first match (with shadow DOM support) */
+  function findElement(parent, selectors) {
+    if (typeof selectors === 'string') selectors = [selectors];
+    for (const sel of selectors) {
+      const el = deepQuery(parent, sel);
+      if (el) return el;
     }
     return null;
   }
 
-  function querySelectorAll(parent, selectorList) {
-    if (typeof selectorList === 'string') selectorList = [selectorList];
-    const results = [];
+  function findElements(parent, selectors) {
+    if (typeof selectors === 'string') selectors = [selectors];
     const seen = new Set();
-    for (const sel of selectorList) {
-      try {
-        parent.querySelectorAll(sel).forEach((el) => {
-          if (!seen.has(el)) {
-            seen.add(el);
-            results.push(el);
-          }
-        });
-      } catch { /* skip */ }
+    const results = [];
+    for (const sel of selectors) {
+      for (const el of deepQueryAll(parent, sel)) {
+        if (!seen.has(el)) {
+          seen.add(el);
+          results.push(el);
+        }
+      }
     }
     return results;
   }
+
+  // -------------------------------------------------------------------------
+  // YouTube Studio comment detection
+  //
+  // YouTube Studio uses custom Polymer elements (ytcp-* prefix).
+  // The DOM structure changes regularly. This code uses multiple strategies
+  // to find comment elements, falling back gracefully.
+  // -------------------------------------------------------------------------
+
+  /** Find all comment containers on the page */
+  function findCommentContainers() {
+    // Strategy 1: YouTube Studio specific elements
+    let containers = findElements(document, [
+      'ytcp-comment-thread',
+      'ytcp-comment',
+      '.comment-thread-renderer',
+    ]);
+
+    // Strategy 2: Generic comment-like containers
+    if (containers.length === 0) {
+      containers = findElements(document, [
+        '[class*="comment-thread"]',
+        '[class*="comment-item"]',
+        '[id*="comment"]',
+      ]);
+      // Filter out non-comment elements
+      containers = containers.filter((el) => {
+        const text = el.textContent || '';
+        return text.length > 20 && text.length < 10000;
+      });
+    }
+
+    // Strategy 3: Look for elements containing reply buttons
+    if (containers.length === 0) {
+      const replyBtns = findElements(document, [
+        'button[aria-label*="reply" i]',
+        'button[aria-label*="reponse" i]',
+        'button[aria-label*="réponse" i]',
+        'button[aria-label*="répondre" i]',
+        '[class*="reply-button"]',
+      ]);
+      // Get parent containers
+      containers = replyBtns
+        .map((btn) => {
+          let parent = btn.parentElement;
+          // Walk up to find a reasonable container (not too large)
+          for (let i = 0; i < 8; i++) {
+            if (!parent || parent === document.body) break;
+            if (parent.offsetHeight > 50 && parent.offsetHeight < 600) {
+              return parent;
+            }
+            parent = parent.parentElement;
+          }
+          return null;
+        })
+        .filter(Boolean);
+    }
+
+    return containers;
+  }
+
+  /** Extract comment text from a container */
+  function getCommentText(container) {
+    const selectors = [
+      '#content-text',
+      '#plain-text',
+      'yt-formatted-string#content-text',
+      '.comment-text',
+      '[class*="comment-text"]',
+      '[class*="comment-content"]',
+    ];
+
+    const el = findElement(container, selectors);
+    if (el) return el.textContent.trim();
+
+    // Fallback: find the largest text block in the container
+    const textNodes = [];
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent.trim();
+      if (text.length > 20) {
+        textNodes.push({ text, node });
+      }
+    }
+    textNodes.sort((a, b) => b.text.length - a.text.length);
+    return textNodes[0]?.text || '';
+  }
+
+  /** Extract comment author */
+  function getCommentAuthor(container) {
+    const selectors = [
+      '#author-text',
+      '.author-text',
+      '#name #text',
+      'a.author-name',
+      '[class*="author"]',
+    ];
+    const el = findElement(container, selectors);
+    return el ? el.textContent.trim() : 'Un viewer';
+  }
+
+  /** Check if the channel owner already replied to this comment */
+  function hasOwnerReply(container) {
+    // Look for owner badges in replies
+    const badges = findElements(container, [
+      '#author-comment-badge',
+      'ytcp-author-comment-badge',
+      '.owner-badge',
+      '[class*="creator-badge"]',
+      '[class*="owner"]',
+    ]);
+
+    // Filter: must be in a reply section, not the main comment
+    for (const badge of badges) {
+      const inReply = badge.closest('[class*="repl"]') ||
+        badge.closest('#replies') ||
+        badge.closest('[id*="repl"]');
+      if (inReply) return true;
+    }
+
+    // Also check by looking for a specific badge icon or text
+    const replySection = findElement(container, [
+      '#replies',
+      '#loaded-replies',
+      '[class*="replies"]',
+    ]);
+    if (replySection) {
+      const text = replySection.textContent || '';
+      // The owner's channel name might appear as a badge
+      // This is a heuristic — not perfect but catches most cases
+      if (findElement(replySection, ['[class*="badge"]', '[class*="creator"]'])) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /** Generate a stable ID for a comment */
+  function getCommentId(container) {
+    const text = getCommentText(container);
+    const author = getCommentAuthor(container);
+    if (!text) return null;
+    const str = `${author}::${text.slice(0, 100)}`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return `cmt_${Math.abs(hash).toString(36)}`;
+  }
+
+  /** Extract videoId from the page */
+  function extractVideoId() {
+    // URL: studio.youtube.com/video/{videoId}/comments
+    const urlMatch = window.location.pathname.match(/\/video\/([^/]+)/);
+    if (urlMatch) return urlMatch[1];
+
+    // Look for video links in the page
+    const link = findElement(document, [
+      'a[href*="/video/"]',
+      '[class*="video-title"] a',
+    ]);
+    if (link) {
+      const href = link.getAttribute('href') || '';
+      const match = href.match(/\/video\/([^/]+)/);
+      if (match) return match[1];
+    }
+
+    return null;
+  }
+
+  function extractVideoIdFromContainer(container) {
+    const link = findElement(container, ['a[href*="/video/"]']);
+    if (link) {
+      const match = (link.getAttribute('href') || '').match(/\/video\/([^/]+)/);
+      if (match) return match[1];
+    }
+    return extractVideoId();
+  }
+
+  // -------------------------------------------------------------------------
+  // Message passing
+  // -------------------------------------------------------------------------
 
   function sendMessage(msg) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(msg, (res) => {
         if (chrome.runtime.lastError) {
-          console.warn('[YT Reply Assistant]', chrome.runtime.lastError.message);
           resolve({ error: chrome.runtime.lastError.message });
         } else {
           resolve(res);
@@ -149,74 +260,19 @@
     });
   }
 
-  function extractVideoId() {
-    // From URL: studio.youtube.com/video/{videoId}/comments
-    const urlMatch = window.location.pathname.match(/\/video\/([^/]+)/);
-    if (urlMatch) return urlMatch[1];
-    return null;
-  }
-
-  function extractVideoIdFromComment(commentEl) {
-    // Try to find a video link in the comment thread
-    const link = querySelector(commentEl, SELECTORS.videoLink);
-    if (link) {
-      const href = link.getAttribute('href') || '';
-      const match = href.match(/\/video\/([^/]+)/);
-      if (match) return match[1];
-    }
-    // Fallback: from current URL
-    return extractVideoId();
-  }
-
-  function getCommentId(commentEl) {
-    // Generate a stable ID from comment text + author
-    const text = getCommentText(commentEl);
-    const author = getCommentAuthor(commentEl);
-    if (!text) return null;
-    // Simple hash
-    const str = `${author}::${text}`;
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32-bit int
-    }
-    return `cmt_${Math.abs(hash).toString(36)}`;
-  }
-
-  function getCommentText(commentEl) {
-    const el = querySelector(commentEl, SELECTORS.commentText);
-    return el ? el.textContent.trim() : '';
-  }
-
-  function getCommentAuthor(commentEl) {
-    const el = querySelector(commentEl, SELECTORS.commentAuthor);
-    return el ? el.textContent.trim() : 'A viewer';
-  }
-
-  function hasOwnerReply(commentEl) {
-    // Check if any reply has the owner badge
-    const replySection = querySelector(commentEl, SELECTORS.replySection);
-    if (!replySection) return false;
-
-    const badges = querySelectorAll(replySection, SELECTORS.ownerBadge);
-    return badges.length > 0;
-  }
-
   // -------------------------------------------------------------------------
   // Suggestion UI
   // -------------------------------------------------------------------------
 
-  function createSuggestionsContainer(commentEl, commentId) {
-    // Don't create if already exists
-    if (commentEl.querySelector(`.${SUGGESTIONS_CLASS}`)) return null;
+  function createSuggestionsContainer(container, commentId) {
+    if (container.querySelector(`.${SUGGESTIONS_CLASS}`)) return null;
 
-    const container = document.createElement('div');
-    container.className = SUGGESTIONS_CLASS;
-    container.dataset.commentId = commentId;
+    const el = document.createElement('div');
+    el.className = SUGGESTIONS_CLASS;
+    el.dataset.commentId = commentId;
 
     // Loading state
-    container.innerHTML = `
+    el.innerHTML = `
       <div class="${NAMESPACE}-loading">
         <div class="${NAMESPACE}-skeleton"></div>
         <div class="${NAMESPACE}-skeleton"></div>
@@ -224,81 +280,57 @@
       </div>
     `;
 
-    // Insert after comment text, before reply section
-    const commentTextEl = querySelector(commentEl, SELECTORS.commentText);
-    if (commentTextEl) {
-      // Find a good insertion point — after the comment content area
-      const insertAfter = commentTextEl.closest('#body') ||
-        commentTextEl.closest('#main') ||
-        commentTextEl.parentElement;
-      if (insertAfter && insertAfter.parentElement) {
-        insertAfter.parentElement.insertBefore(container, insertAfter.nextSibling);
-      } else {
-        commentEl.appendChild(container);
-      }
-    } else {
-      commentEl.appendChild(container);
-    }
+    // Insert at end of the container (safest position)
+    container.appendChild(el);
 
-    return container;
+    return el;
   }
 
-  function renderSuggestions(container, suggestions, providerName, fallback) {
-    if (!container) return;
+  function renderSuggestions(wrapper, suggestions, providerName, fallback) {
+    if (!wrapper) return;
+    const commentId = wrapper.dataset.commentId;
+    wrapper.innerHTML = '';
 
-    const commentId = container.dataset.commentId;
+    // Chips
+    const chips = document.createElement('div');
+    chips.className = `${NAMESPACE}-chips`;
 
-    container.innerHTML = '';
-
-    // Chips container
-    const chipsWrapper = document.createElement('div');
-    chipsWrapper.className = `${NAMESPACE}-chips`;
-
-    suggestions.forEach((text, idx) => {
+    suggestions.forEach((text) => {
       if (!text) return;
-
       const chip = document.createElement('button');
       chip.className = `${NAMESPACE}-chip`;
-      chip.title = text; // Full text on hover
+      chip.title = text;
       chip.textContent = text.length > 100 ? text.slice(0, 100) + '...' : text;
 
       chip.addEventListener('click', () => {
-        insertReply(container.closest(SELECTORS.commentThread.join(', ')) || container.parentElement, text);
-        // Mark as used
-        container.classList.add(`${NAMESPACE}-used`);
+        insertReply(wrapper.parentElement, text);
+        wrapper.classList.add(`${NAMESPACE}-used`);
       });
-
-      chipsWrapper.appendChild(chip);
+      chips.appendChild(chip);
     });
+    wrapper.appendChild(chips);
 
-    container.appendChild(chipsWrapper);
-
-    // Actions row
+    // Actions
     const actions = document.createElement('div');
     actions.className = `${NAMESPACE}-actions`;
 
-    // Regenerate button
-    const regenBtn = document.createElement('button');
-    regenBtn.className = `${NAMESPACE}-action-btn`;
-    regenBtn.innerHTML = '&#x21BB;'; // ↻
-    regenBtn.title = 'Regenerate suggestions';
-    regenBtn.addEventListener('click', () => {
-      regenerateSuggestions(container);
-    });
-    actions.appendChild(regenBtn);
+    const regen = document.createElement('button');
+    regen.className = `${NAMESPACE}-action-btn`;
+    regen.innerHTML = '&#x21BB;';
+    regen.title = 'Regenerer';
+    regen.addEventListener('click', () => regenerate(wrapper));
+    actions.appendChild(regen);
 
-    // Dismiss button
-    const dismissBtn = document.createElement('button');
-    dismissBtn.className = `${NAMESPACE}-action-btn ${NAMESPACE}-dismiss`;
-    dismissBtn.innerHTML = '&#x2715;'; // ✕
-    dismissBtn.title = 'Dismiss';
-    dismissBtn.addEventListener('click', () => {
+    const dismiss = document.createElement('button');
+    dismiss.className = `${NAMESPACE}-action-btn ${NAMESPACE}-dismiss`;
+    dismiss.innerHTML = '&#x2715;';
+    dismiss.title = 'Ignorer';
+    dismiss.addEventListener('click', () => {
       sendMessage({ type: 'DISMISS_COMMENT', commentId });
-      container.remove();
+      wrapper.remove();
     });
-    actions.appendChild(dismissBtn);
+    actions.appendChild(dismiss);
 
-    // Provider indicator
     if (fallback) {
       const badge = document.createElement('span');
       badge.className = `${NAMESPACE}-fallback-badge`;
@@ -306,118 +338,116 @@
       actions.appendChild(badge);
     }
 
-    container.appendChild(actions);
+    wrapper.appendChild(actions);
   }
 
-  function renderError(container, errorMsg) {
-    if (!container) return;
-
-    container.innerHTML = `
+  function renderError(wrapper, msg) {
+    if (!wrapper) return;
+    wrapper.innerHTML = `
       <div class="${NAMESPACE}-error">
-        <span>${errorMsg || 'Generation failed'}</span>
-        <button class="${NAMESPACE}-action-btn" title="Retry">&#x21BB;</button>
+        <span>${msg || 'Erreur de generation'}</span>
+        <button class="${NAMESPACE}-action-btn" title="Reessayer">&#x21BB;</button>
       </div>
     `;
-
-    container.querySelector(`.${NAMESPACE}-action-btn`).addEventListener('click', () => {
-      regenerateSuggestions(container);
-    });
+    wrapper.querySelector(`.${NAMESPACE}-action-btn`).addEventListener('click', () =>
+      regenerate(wrapper)
+    );
   }
 
   // -------------------------------------------------------------------------
   // Reply insertion
   // -------------------------------------------------------------------------
 
-  function insertReply(threadEl, text) {
-    if (!threadEl) return;
+  function insertReply(container, text) {
+    if (!container) return;
 
-    // Click the reply button first to open the reply field
-    const replyBtn = querySelector(threadEl, SELECTORS.replyButton);
-    if (replyBtn) {
-      replyBtn.click();
-    }
+    // Click reply button to open the field
+    const replyBtn = findElement(container, [
+      '#reply-button button',
+      '#reply-button',
+      'button[aria-label*="reply" i]',
+      'button[aria-label*="reponse" i]',
+      'button[aria-label*="réponse" i]',
+      'button[aria-label*="répondre" i]',
+      '[class*="reply-button"]',
+    ]);
+    if (replyBtn) replyBtn.click();
 
-    // Wait for the reply input to appear, then insert text
+    // Wait for input to appear, then fill it
     setTimeout(() => {
-      const input = querySelector(threadEl, SELECTORS.replyInput);
+      const input = findElement(container, [
+        '#contenteditable-root',
+        '[contenteditable="true"]',
+        'div[aria-label*="reply" i]',
+        'div[aria-label*="reponse" i]',
+        'div[aria-label*="réponse" i]',
+        'div[aria-label*="répondre" i]',
+        'textarea',
+      ]);
+
       if (input) {
-        // For contenteditable divs
         input.focus();
-        input.textContent = text;
-        // Trigger input event so YouTube Studio picks up the change
+        if (input.tagName === 'TEXTAREA' || input.tagName === 'INPUT') {
+          input.value = text;
+        } else {
+          input.textContent = text;
+        }
+        // Dispatch events so YouTube Studio picks up the change
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
-
-        // Also try setting innerText and dispatching keydown
-        // (YouTube Studio may listen for specific events)
-        const inputEvent = new InputEvent('input', {
-          bubbles: true,
-          cancelable: true,
-          inputType: 'insertText',
-          data: text,
-        });
-        input.dispatchEvent(inputEvent);
+        input.dispatchEvent(
+          new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'insertText',
+            data: text,
+          })
+        );
       }
-    }, 300);
+    }, 400);
   }
 
   // -------------------------------------------------------------------------
-  // Generation orchestration
+  // Generation
   // -------------------------------------------------------------------------
 
-  async function generateForComment(commentEl) {
-    const commentText = getCommentText(commentEl);
-    if (!commentText) return;
+  async function generateForContainer(container) {
+    const text = getCommentText(container);
+    if (!text || text.length < 5) return;
 
-    const commentId = getCommentId(commentEl);
+    const commentId = getCommentId(container);
     if (!commentId) return;
 
-    // Check if dismissed
     const { dismissed } = await sendMessage({ type: 'IS_DISMISSED', commentId });
     if (dismissed) return;
 
-    // Create UI container
-    const container = createSuggestionsContainer(commentEl, commentId);
-    if (!container) return; // Already exists
+    const wrapper = createSuggestionsContainer(container, commentId);
+    if (!wrapper) return;
 
-    // Get video context
-    const videoId = extractVideoIdFromComment(commentEl) || extractVideoId();
-    const commentAuthor = getCommentAuthor(commentEl);
+    const videoId = extractVideoIdFromContainer(container);
+    const author = getCommentAuthor(container);
 
-    // Request generation from background
     const result = await sendMessage({
       type: 'GENERATE_SUGGESTIONS',
-      commentText,
-      commentAuthor,
+      commentText: text,
+      commentAuthor: author,
       videoId,
-      videoTitle: '', // Background will get it from transcript
+      videoTitle: '',
     });
 
     if (result.error) {
-      renderError(container, result.error);
+      renderError(wrapper, result.error);
       return;
     }
 
-    renderSuggestions(
-      container,
-      result.suggestions,
-      result.provider,
-      result.fallback
-    );
+    renderSuggestions(wrapper, result.suggestions, result.provider, result.fallback);
   }
 
-  async function regenerateSuggestions(container) {
-    const commentEl =
-      container.closest(SELECTORS.commentThread.join(', ')) ||
-      container.parentElement;
-    if (!commentEl) return;
+  async function regenerate(wrapper) {
+    const container = wrapper.parentElement;
+    if (!container) return;
 
-    const commentText = getCommentText(commentEl);
-    const commentAuthor = getCommentAuthor(commentEl);
-    const videoId = extractVideoIdFromComment(commentEl) || extractVideoId();
-
-    // Show loading
-    container.innerHTML = `
+    wrapper.innerHTML = `
       <div class="${NAMESPACE}-loading">
         <div class="${NAMESPACE}-skeleton"></div>
         <div class="${NAMESPACE}-skeleton"></div>
@@ -427,84 +457,87 @@
 
     const result = await sendMessage({
       type: 'GENERATE_SUGGESTIONS',
-      commentText,
-      commentAuthor,
-      videoId,
+      commentText: getCommentText(container),
+      commentAuthor: getCommentAuthor(container),
+      videoId: extractVideoIdFromContainer(container),
       videoTitle: '',
     });
 
     if (result.error) {
-      renderError(container, result.error);
+      renderError(wrapper, result.error);
       return;
     }
 
-    renderSuggestions(
-      container,
-      result.suggestions,
-      result.provider,
-      result.fallback
+    renderSuggestions(wrapper, result.suggestions, result.provider, result.fallback);
+  }
+
+  // -------------------------------------------------------------------------
+  // Reply capture (apprentissage continu)
+  // -------------------------------------------------------------------------
+
+  function watchForReplies() {
+    document.addEventListener(
+      'click',
+      (e) => {
+        const btn = e.target.closest(
+          '#submit-button button, #submit-button, button[aria-label*="submit" i], button[aria-label*="envoyer" i]'
+        );
+        if (!btn) return;
+
+        // Find the input near the button
+        let scope = btn.parentElement;
+        for (let i = 0; i < 5; i++) {
+          if (!scope) break;
+          const input = findElement(scope, [
+            '#contenteditable-root',
+            '[contenteditable="true"]',
+            'textarea',
+          ]);
+          if (input) {
+            const replyText = input.value || input.textContent || '';
+            if (replyText.trim().length > 5) {
+              sendMessage({ type: 'RECORD_REPLY', replyText: replyText.trim() });
+            }
+            // Remove suggestions
+            const suggestions = scope.querySelector(`.${SUGGESTIONS_CLASS}`);
+            if (suggestions) {
+              suggestions.classList.add(`${NAMESPACE}-posted`);
+              setTimeout(() => suggestions.remove(), 300);
+            }
+            break;
+          }
+          scope = scope.parentElement;
+        }
+      },
+      true
     );
   }
 
   // -------------------------------------------------------------------------
-  // Reply capture (for continuous learning)
+  // Detection + Intersection Observer
   // -------------------------------------------------------------------------
 
-  function watchForPostedReplies() {
-    // Observe the page for newly posted replies
-    // When a reply is submitted, capture its text
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest(SELECTORS.submitReply.join(', '));
-      if (!btn) return;
+  let observer = null;
+  const pending = new Map();
 
-      // Find the reply input near this button
-      const thread = btn.closest(SELECTORS.commentThread.join(', ')) || btn.parentElement?.parentElement;
-      if (!thread) return;
-
-      const input = querySelector(thread, SELECTORS.replyInput);
-      if (input && input.textContent.trim()) {
-        sendMessage({
-          type: 'RECORD_REPLY',
-          replyText: input.textContent.trim(),
-        });
-
-        // Remove suggestions for this comment
-        const suggestionsEl = thread.querySelector(`.${SUGGESTIONS_CLASS}`);
-        if (suggestionsEl) {
-          suggestionsEl.classList.add(`${NAMESPACE}-posted`);
-          setTimeout(() => suggestionsEl.remove(), 500);
-        }
-      }
-    }, true);
-  }
-
-  // -------------------------------------------------------------------------
-  // Comment detection + Intersection Observer (lazy generation)
-  // -------------------------------------------------------------------------
-
-  let intersectionObserver = null;
-  const pendingGeneration = new Map(); // commentEl → timeout
-
-  function setupIntersectionObserver() {
-    intersectionObserver = new IntersectionObserver(
+  function setupObserver() {
+    observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          const commentEl = entry.target;
+          const el = entry.target;
           if (entry.isIntersecting) {
-            // Debounce: only generate after comment is visible for DEBOUNCE_MS
-            if (!pendingGeneration.has(commentEl)) {
-              const timeout = setTimeout(() => {
-                pendingGeneration.delete(commentEl);
-                generateForComment(commentEl);
+            if (!pending.has(el)) {
+              const t = setTimeout(() => {
+                pending.delete(el);
+                generateForContainer(el);
               }, DEBOUNCE_MS);
-              pendingGeneration.set(commentEl, timeout);
+              pending.set(el, t);
             }
           } else {
-            // Cancel if scrolled away before debounce fires
-            const timeout = pendingGeneration.get(commentEl);
-            if (timeout) {
-              clearTimeout(timeout);
-              pendingGeneration.delete(commentEl);
+            const t = pending.get(el);
+            if (t) {
+              clearTimeout(t);
+              pending.delete(el);
             }
           }
         }
@@ -513,137 +546,107 @@
     );
   }
 
-  function detectComments(root = document) {
-    const threads = querySelectorAll(root, SELECTORS.commentThread);
+  function scanComments() {
+    const containers = findCommentContainers();
 
-    for (const thread of threads) {
-      // Skip already processed
-      if (thread.hasAttribute(PROCESSED_ATTR)) continue;
-      thread.setAttribute(PROCESSED_ATTR, 'true');
+    let newCount = 0;
+    for (const c of containers) {
+      if (c.hasAttribute(PROCESSED_ATTR)) continue;
+      c.setAttribute(PROCESSED_ATTR, 'true');
 
-      // Skip if owner already replied
-      if (hasOwnerReply(thread)) continue;
+      if (hasOwnerReply(c)) continue;
 
-      // Skip if no comment text
-      const text = getCommentText(thread);
-      if (!text) continue;
+      const text = getCommentText(c);
+      if (!text || text.length < 5) continue;
 
-      // Observe for viewport entry
-      if (intersectionObserver) {
-        intersectionObserver.observe(thread);
-      }
+      if (observer) observer.observe(c);
+      newCount++;
+    }
+
+    if (newCount > 0) {
+      console.log(`[YT Reply Assistant] ${newCount} nouveaux commentaires detectes`);
     }
   }
 
   // -------------------------------------------------------------------------
-  // MutationObserver (watch for dynamically loaded comments)
+  // MutationObserver
   // -------------------------------------------------------------------------
 
-  function setupMutationObserver() {
-    const observer = new MutationObserver((mutations) => {
-      let shouldScan = false;
-      for (const mutation of mutations) {
-        if (mutation.addedNodes.length > 0) {
-          shouldScan = true;
-          break;
-        }
-      }
-      if (shouldScan) {
-        // Debounce DOM scans
-        clearTimeout(setupMutationObserver._timeout);
-        setupMutationObserver._timeout = setTimeout(() => {
-          detectComments();
-        }, 200);
-      }
+  function watchDOM() {
+    let timeout;
+    const mo = new MutationObserver(() => {
+      clearTimeout(timeout);
+      timeout = setTimeout(scanComments, 300);
     });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    return observer;
+    mo.observe(document.body, { childList: true, subtree: true });
   }
 
   // -------------------------------------------------------------------------
-  // Style scraping (for onboarding)
+  // Communication avec le popup
   // -------------------------------------------------------------------------
 
-  async function scrapeExistingReplies() {
-    // Find all owner replies on the current page
-    const replies = [];
-    const allComments = querySelectorAll(document, SELECTORS.comment);
-
-    for (const comment of allComments) {
-      // Check if this comment has owner badge
-      const badge = querySelector(comment, SELECTORS.ownerBadge);
-      if (badge) {
-        const text = getCommentText(comment);
-        if (text && text.length > 5) {
-          replies.push(text);
-        }
-      }
-    }
-
-    return replies;
-  }
-
-  // Expose for popup communication
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'SCRAPE_REPLIES') {
-      scrapeExistingReplies().then(sendResponse);
-      return true;
+      // Chercher les reponses du proprietaire sur la page
+      const ownerReplies = [];
+      const allElements = findElements(document, [
+        'ytcp-comment',
+        '[class*="comment"]',
+      ]);
+      for (const el of allElements) {
+        const badge = findElement(el, [
+          '#author-comment-badge',
+          'ytcp-author-comment-badge',
+          '[class*="owner"]',
+          '[class*="creator-badge"]',
+        ]);
+        if (badge) {
+          const text = getCommentText(el);
+          if (text && text.length > 5) ownerReplies.push(text);
+        }
+      }
+      sendResponse(ownerReplies);
+      return false;
     }
+
     if (msg.type === 'FORCE_SCAN') {
-      detectComments();
+      scanComments();
       sendResponse({ ok: true });
       return false;
     }
   });
 
   // -------------------------------------------------------------------------
-  // Initialization
+  // Init
   // -------------------------------------------------------------------------
 
   async function init() {
-    // Check if we're on a comments page
     const isCommentsPage =
       window.location.pathname.includes('/comments') ||
       window.location.pathname.includes('/community');
 
     if (!isCommentsPage) return;
 
-    // Check onboarding status
     const { onboarded } = await sendMessage({ type: 'GET_ONBOARDING_STATUS' });
-
-    console.log('[YT Reply Assistant] Initialized', {
-      onboarded,
-      url: window.location.href,
-    });
-
     if (!onboarded) {
-      // Don't inject suggestions until onboarding is complete
-      // The popup will handle onboarding
+      console.log('[YT Reply Assistant] En attente de l\'onboarding...');
       return;
     }
 
-    // Setup observers and start detection
-    setupIntersectionObserver();
-    setupMutationObserver();
-    watchForPostedReplies();
+    console.log('[YT Reply Assistant] Actif sur', window.location.href);
 
-    // Initial scan
-    detectComments();
+    setupObserver();
+    watchDOM();
+    watchForReplies();
 
-    // Re-scan periodically (catch missed dynamic loads)
-    setInterval(() => detectComments(), 5000);
+    // Scan initial + periodique
+    scanComments();
+    setInterval(scanComments, 5000);
   }
 
-  // Wait for page to be ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 1000));
   } else {
-    // Small delay to let YouTube Studio hydrate its components
     setTimeout(init, 1000);
   }
 })();

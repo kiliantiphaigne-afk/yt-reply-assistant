@@ -1,27 +1,21 @@
 // =============================================================================
 // Style Profile Manager
-// Builds and maintains the creator's reply style profile
+// Construit et maintient le profil de style du createur
 // =============================================================================
 
 const MAX_REPLIES_STORED = 50;
 const REGEN_EVERY_N = 20;
 
-/**
- * Get the current style profile (system prompt).
- * Returns null if not yet built.
- */
 export async function getStyleProfile() {
   const { styleProfile } = await chrome.storage.local.get('styleProfile');
   return styleProfile || null;
 }
 
-/**
- * Get info about the style profile for the settings page.
- */
 export async function getStyleInfo() {
-  const { styleProfile, styleReplies = [] } =
-    await chrome.storage.local.get(['styleProfile', 'styleReplies']);
-
+  const { styleProfile, styleReplies = [] } = await chrome.storage.local.get([
+    'styleProfile',
+    'styleReplies',
+  ]);
   return {
     built: !!styleProfile,
     replyCount: styleReplies.length,
@@ -30,22 +24,16 @@ export async function getStyleInfo() {
   };
 }
 
-/**
- * Build the style profile from an array of reply texts.
- * Called during onboarding (with scraped replies) and during regen.
- */
 export async function buildStyleProfile(replies) {
   if (!replies || replies.length === 0) {
-    return { error: 'No replies to analyze' };
+    return { error: 'Aucune reponse a analyser' };
   }
 
-  // Store replies
-  await chrome.storage.local.set({ styleReplies: replies.slice(0, MAX_REPLIES_STORED) });
+  await chrome.storage.local.set({
+    styleReplies: replies.slice(0, MAX_REPLIES_STORED),
+  });
 
-  // Analyze patterns
   const analysis = analyzeReplies(replies);
-
-  // Build system prompt
   const systemPrompt = buildSystemPrompt(analysis, replies);
 
   const profile = {
@@ -56,33 +44,21 @@ export async function buildStyleProfile(replies) {
   };
 
   await chrome.storage.local.set({ styleProfile: profile });
-
   return profile;
 }
 
-/**
- * Record a new reply (posted by the creator) for continuous learning.
- */
 export async function recordReply(replyText) {
   if (!replyText || replyText.trim().length < 5) return;
 
   const { styleReplies = [], styleReplyCounter = 0 } =
     await chrome.storage.local.get(['styleReplies', 'styleReplyCounter']);
 
-  // Add new reply, keep max
   styleReplies.push(replyText.trim());
-  if (styleReplies.length > MAX_REPLIES_STORED) {
-    styleReplies.shift();
-  }
+  if (styleReplies.length > MAX_REPLIES_STORED) styleReplies.shift();
 
   const newCounter = styleReplyCounter + 1;
+  await chrome.storage.local.set({ styleReplies, styleReplyCounter: newCounter });
 
-  await chrome.storage.local.set({
-    styleReplies,
-    styleReplyCounter: newCounter,
-  });
-
-  // Regen profile every N replies
   if (newCounter >= REGEN_EVERY_N) {
     await buildStyleProfile(styleReplies);
     await chrome.storage.local.set({ styleReplyCounter: 0 });
@@ -90,92 +66,83 @@ export async function recordReply(replyText) {
 }
 
 // ---------------------------------------------------------------------------
-// Analysis helpers
+// Analyse
 // ---------------------------------------------------------------------------
 
 function analyzeReplies(replies) {
-  const lengths = replies.map((r) => r.length);
-  const avgLength = Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length);
-
-  // Word count
   const wordCounts = replies.map((r) => r.split(/\s+/).length);
-  const avgWords = Math.round(wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length);
+  const avgWords = Math.round(
+    wordCounts.reduce((a, b) => a + b, 0) / wordCounts.length
+  );
 
-  // Emoji detection
   const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
   const emojiCounts = replies.map((r) => (r.match(emojiRegex) || []).length);
   const totalEmojis = emojiCounts.reduce((a, b) => a + b, 0);
-  const emojiFrequency = totalEmojis / replies.length;
+  const emojiFreq = totalEmojis / replies.length;
   const commonEmojis = findCommonEmojis(replies);
 
-  // Language detection (simple heuristic)
-  const frenchMarkers = /\b(je|tu|il|elle|nous|vous|ils|elles|c'est|oui|merci|très|bien|aussi|avec|pour|dans|mais|que|qui|est|les|des|une|pas)\b/gi;
-  const englishMarkers = /\b(the|is|are|was|were|have|has|been|this|that|with|for|and|but|not|you|your|they|from|what|which)\b/gi;
-
-  let frenchScore = 0;
-  let englishScore = 0;
+  // Detection de langue
+  const fr = /\b(je|tu|il|elle|nous|vous|ils|elles|c'est|oui|merci|très|bien|aussi|avec|pour|dans|mais|que|qui|est|les|des|une|pas)\b/gi;
+  const en = /\b(the|is|are|was|were|have|has|been|this|that|with|for|and|but|not|you|your|they|from|what|which)\b/gi;
+  let frScore = 0,
+    enScore = 0;
   for (const r of replies) {
-    frenchScore += (r.match(frenchMarkers) || []).length;
-    englishScore += (r.match(englishMarkers) || []).length;
+    frScore += (r.match(fr) || []).length;
+    enScore += (r.match(en) || []).length;
   }
-  const language = frenchScore > englishScore ? 'french' : 'english';
+  const language = frScore > enScore ? 'francais' : 'anglais';
 
-  // Formality detection
+  // Formalite
   const tuCount = replies.filter((r) => /\b(tu|toi|ton|ta|tes)\b/i.test(r)).length;
-  const vousCount = replies.filter((r) => /\b(vous|votre|vos)\b/i.test(r)).length;
+  const vousCount = replies.filter((r) =>
+    /\b(vous|votre|vos)\b/i.test(r)
+  ).length;
   const formality =
-    language === 'french'
+    language === 'francais'
       ? tuCount > vousCount
-        ? 'informal-tu'
-        : 'formal-vous'
+        ? 'tutoiement'
+        : 'vouvoiement'
       : 'casual';
 
-  // Question frequency
-  const questionReplies = replies.filter((r) => r.includes('?')).length;
-  const questionRate = questionReplies / replies.length;
+  const questionRate = replies.filter((r) => r.includes('?')).length / replies.length;
+  const exclamationRate = replies.filter((r) => r.includes('!')).length / replies.length;
 
-  // Opening/closing patterns
   const openings = findPatterns(replies, 'opening');
   const closings = findPatterns(replies, 'closing');
 
-  // Exclamation usage
-  const exclamationReplies = replies.filter((r) => r.includes('!')).length;
-  const exclamationRate = exclamationReplies / replies.length;
-
-  const summary = [
-    `Language: ${language}`,
-    `Style: ${formality}`,
-    `Average length: ~${avgWords} words`,
-    emojiFrequency > 0.3
-      ? `Emojis: frequent (${commonEmojis.slice(0, 5).join(' ')})`
-      : emojiFrequency > 0
-        ? 'Emojis: occasional'
-        : 'Emojis: rare',
-    questionRate > 0.3 ? 'Often asks questions' : 'Rarely asks questions',
-    exclamationRate > 0.5 ? 'Enthusiastic tone (!)' : 'Calm tone',
-  ].join(' | ');
+  // Resume en francais
+  const parts = [
+    `Langue : ${language}`,
+    `Style : ${formality}`,
+    `~${avgWords} mots/reponse`,
+    emojiFreq > 0.3
+      ? `Emojis frequents (${commonEmojis.slice(0, 4).join(' ')})`
+      : emojiFreq > 0
+        ? 'Emojis occasionnels'
+        : 'Peu d\'emojis',
+    questionRate > 0.3 ? 'Pose souvent des questions' : '',
+    exclamationRate > 0.5 ? 'Ton enthousiaste' : '',
+  ].filter(Boolean);
 
   return {
     language,
     formality,
-    avgLength,
     avgWords,
-    emojiFrequency,
+    emojiFreq,
     commonEmojis,
     questionRate,
     exclamationRate,
     openings,
     closings,
-    summary,
+    summary: parts.join(' | '),
   };
 }
 
 function findCommonEmojis(replies) {
-  const emojiRegex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
+  const regex = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
   const counts = {};
   for (const r of replies) {
-    const emojis = r.match(emojiRegex) || [];
-    for (const e of emojis) {
+    for (const e of r.match(regex) || []) {
       counts[e] = (counts[e] || 0) + 1;
     }
   }
@@ -189,27 +156,21 @@ function findPatterns(replies, position) {
   for (const r of replies) {
     const words = r.split(/\s+/);
     if (words.length < 2) continue;
-
-    const segment =
+    const seg =
       position === 'opening'
-        ? words.slice(0, Math.min(3, words.length)).join(' ').toLowerCase()
-        : words
-            .slice(Math.max(0, words.length - 3))
-            .join(' ')
-            .toLowerCase();
-
-    patterns[segment] = (patterns[segment] || 0) + 1;
+        ? words.slice(0, 3).join(' ').toLowerCase()
+        : words.slice(-3).join(' ').toLowerCase();
+    patterns[seg] = (patterns[seg] || 0) + 1;
   }
-
   return Object.entries(patterns)
-    .filter(([, count]) => count >= 2)
+    .filter(([, c]) => c >= 2)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3)
     .map(([p]) => p);
 }
 
 // ---------------------------------------------------------------------------
-// System prompt builder
+// System prompt
 // ---------------------------------------------------------------------------
 
 function buildSystemPrompt(analysis, replies) {
@@ -217,7 +178,7 @@ function buildSystemPrompt(analysis, replies) {
     language,
     formality,
     avgWords,
-    emojiFrequency,
+    emojiFreq,
     commonEmojis,
     questionRate,
     exclamationRate,
@@ -226,78 +187,55 @@ function buildSystemPrompt(analysis, replies) {
   } = analysis;
 
   const langInstruction =
-    language === 'french'
+    language === 'francais'
       ? 'Reponds TOUJOURS en francais.'
       : 'Always reply in English.';
 
   const formalityInstruction =
-    formality === 'informal-tu'
+    formality === 'tutoiement'
       ? 'Utilise le tutoiement (tu/toi). Ton informel et proche.'
-      : formality === 'formal-vous'
+      : formality === 'vouvoiement'
         ? 'Utilise le vouvoiement (vous). Ton respectueux mais chaleureux.'
         : 'Use a casual, friendly tone.';
 
-  const lengthInstruction =
-    language === 'french'
-      ? `Longueur cible : ~${avgWords} mots par reponse. Pas de pavés.`
-      : `Target length: ~${avgWords} words per reply. Keep it concise.`;
+  const lengthInstruction = `Longueur cible : ~${avgWords} mots par reponse. Pas de pavés.`;
 
   let emojiInstruction = '';
-  if (emojiFrequency > 0.5 && commonEmojis.length > 0) {
+  if (emojiFreq > 0.5 && commonEmojis.length > 0) {
     emojiInstruction = `Utilise des emojis regulierement, surtout : ${commonEmojis.slice(0, 5).join(' ')}`;
-  } else if (emojiFrequency > 0.1) {
+  } else if (emojiFreq > 0.1) {
     emojiInstruction = 'Utilise des emojis occasionnellement.';
   } else {
-    emojiInstruction =
-      language === 'french'
-        ? "N'utilise pas ou tres peu d'emojis."
-        : "Don't use emojis, or very rarely.";
+    emojiInstruction = "N'utilise pas ou tres peu d'emojis.";
   }
 
-  const questionInstruction =
-    questionRate > 0.3
-      ? language === 'french'
-        ? 'Pose souvent une question de relance pour engager la conversation.'
-        : 'Often ask a follow-up question to engage the conversation.'
-      : '';
-
-  const exclamationInstruction =
-    exclamationRate > 0.5
-      ? language === 'french'
-        ? 'Ton enthousiaste — utilise des points d\'exclamation.'
-        : 'Enthusiastic tone — use exclamation marks.'
-      : '';
-
-  // Include a few example replies for few-shot learning
   const exampleReplies = replies
     .slice(0, 5)
-    .map((r, i) => `Example ${i + 1}: "${r}"`)
+    .map((r, i) => `Exemple ${i + 1}: "${r}"`)
     .join('\n');
 
-  const systemPrompt = `You are a YouTube creator replying to comments on your videos.
-Your goal is to write engaging, authentic replies that match the creator's personal style.
+  return `Tu es un createur YouTube qui repond aux commentaires sur ses videos.
+Ton objectif : ecrire des reponses engageantes et authentiques qui correspondent au style personnel du createur.
 
-STYLE RULES:
+REGLES DE STYLE :
 - ${langInstruction}
 - ${formalityInstruction}
 - ${lengthInstruction}
 - ${emojiInstruction}
-${questionInstruction ? `- ${questionInstruction}` : ''}
-${exclamationInstruction ? `- ${exclamationInstruction}` : ''}
-${openings.length > 0 ? `- Common openings: "${openings.join('", "')}"` : ''}
-${closings.length > 0 ? `- Common closings: "${closings.join('", "')}"` : ''}
+${questionRate > 0.3 ? '- Pose souvent une question de relance pour engager la conversation.' : ''}
+${exclamationRate > 0.5 ? "- Ton enthousiaste — utilise des points d'exclamation." : ''}
+${openings.length > 0 ? `- Ouvertures frequentes : "${openings.join('", "')}"` : ''}
+${closings.length > 0 ? `- Fermetures frequentes : "${closings.join('", "')}"` : ''}
 
-ENGAGEMENT RULES:
-- Be genuine and personal, never generic or corporate
-- When relevant, connect the reply to a specific point from the video
-- Ask questions that show genuine interest in the commenter's perspective
-- If the comment raises a good point, acknowledge it specifically
-- Keep the conversation going — don't give dead-end replies
+REGLES D'ENGAGEMENT :
+- Sois authentique et personnel, jamais generique ou corporate
+- Quand c'est pertinent, fais le lien avec un point precis de la video
+- Pose des questions qui montrent un interet sincere pour le point de vue du commentateur
+- Si le commentaire souleve un bon point, reconnais-le specifiquement
+- Fais en sorte que la conversation continue — pas de reponses fermees
 
-EXAMPLES OF THE CREATOR'S ACTUAL REPLIES:
+EXEMPLES DE REPONSES DU CREATEUR :
 ${exampleReplies}
 
-CRITICAL: Match the tone, vocabulary, and style of these examples exactly. Do not be more formal or less formal than the examples show.`;
-
-  return systemPrompt;
+CRITIQUE : Reproduis exactement le ton, le vocabulaire et le style de ces exemples.`;
 }

@@ -96,12 +96,12 @@ async function generateSuggestions({
   const profile = await getStyleProfile();
   const systemPrompt =
     profile?.systemPrompt ||
-    'You are a friendly YouTube creator. Reply in a natural, engaging way. Keep it short.';
+    'Tu es un createur YouTube sympa. Reponds de maniere naturelle, engageante et concise. Utilise le tutoiement.';
 
   // Build user prompt
   const userPrompt = buildUserPrompt({
     commentText,
-    commentAuthor: commentAuthor || 'A viewer',
+    commentAuthor: commentAuthor || 'Un viewer',
     videoTitle: providedTitle || transcript.title,
     videoTranscript: transcript.text,
     partialContext: transcript.partial,
@@ -111,7 +111,7 @@ async function generateSuggestions({
   const { provider, fallback } = await resolveProvider();
   if (!provider) {
     return {
-      error: 'No AI provider available. Configure one in the extension settings.',
+      error: 'Aucun provider IA disponible. Configure-en un dans les parametres de l\'extension.',
       suggestions: [],
     };
   }

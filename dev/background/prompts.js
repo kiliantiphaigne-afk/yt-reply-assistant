@@ -4,15 +4,7 @@
 // =============================================================================
 
 /**
- * Build the user prompt for generating reply suggestions.
- *
- * @param {object} params
- * @param {string} params.commentText - The comment to reply to
- * @param {string} params.commentAuthor - Name of the commenter
- * @param {string} params.videoTitle - Title of the video
- * @param {string} params.videoTranscript - Transcript text (may be empty)
- * @param {boolean} params.partialContext - True if transcript is unavailable
- * @returns {string} The user prompt
+ * Construit le prompt utilisateur pour generer les suggestions de reponse.
  */
 export function buildUserPrompt({
   commentText,
@@ -22,39 +14,39 @@ export function buildUserPrompt({
   partialContext,
 }) {
   const contextSection = videoTranscript
-    ? `VIDEO TRANSCRIPT (for context):
+    ? `TRANSCRIPT DE LA VIDEO (pour le contexte) :
 ---
 ${truncate(videoTranscript, 3000)}
 ---`
     : partialContext
-      ? `(No transcript available for this video — rely on the title and comment only)`
+      ? `(Pas de transcript disponible — base-toi uniquement sur le titre et le commentaire)`
       : '';
 
-  return `VIDEO: "${videoTitle}"
+  return `VIDEO : "${videoTitle}"
 
 ${contextSection}
 
-COMMENT by ${commentAuthor}:
+COMMENTAIRE de ${commentAuthor} :
 "${commentText}"
 
-Generate exactly 3 reply suggestions, each on its own line, prefixed with [1], [2], [3].
+Genere exactement 3 suggestions de reponse, chacune sur sa propre ligne, prefixee par [1], [2], [3].
 
-[1] = Engaging direct reply: respond to their specific point + ask a follow-up question
-[2] = Deeper reply: connect their comment to something from the video + open discussion
-[3] = Short & warm reply: brief acknowledgment + micro-question (1-2 sentences max)
+[1] = Reponse directe et engageante : reponds au point specifique + pose une question de relance
+[2] = Reponse approfondie : fais le lien avec un element de la video + ouvre la discussion
+[3] = Reponse courte et chaleureuse : remerciement bref + micro-question (1-2 phrases max)
 
-Rules:
-- Each reply must feel natural and personal, NOT template-like
-- Do NOT start all 3 replies the same way
-- Do NOT use generic phrases like "Great question!" or "Thanks for sharing!"
-- Each reply should be self-contained (not reference the other suggestions)
-- Match the creator's style exactly (see system prompt)
+Regles :
+- Chaque reponse doit etre naturelle et personnelle, PAS un template generique
+- Ne commence PAS les 3 reponses de la meme maniere
+- N'utilise PAS de phrases generiques comme "Super question !" ou "Merci pour le partage !"
+- Chaque reponse est autonome (ne reference pas les autres suggestions)
+- Reproduis exactement le style du createur (voir le system prompt)
 
-Output ONLY the 3 replies, nothing else.`;
+Ecris UNIQUEMENT les 3 reponses, rien d'autre.`;
 }
 
 /**
- * Parse the AI response into 3 individual suggestions.
+ * Parse la reponse IA en 3 suggestions individuelles.
  */
 export function parseSuggestions(rawResponse) {
   const lines = rawResponse.split('\n').filter((l) => l.trim());

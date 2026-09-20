@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=400">
@@ -9,79 +9,83 @@
 <body>
   <div id="app">
 
-    <!-- ===== Onboarding View ===== -->
+    <!-- ===== Onboarding ===== -->
     <div id="onboarding" class="view" style="display: none;">
       <div class="header">
         <div class="logo">💬</div>
         <h1>YT Reply Assistant</h1>
-        <p class="subtitle">AI-powered reply suggestions for your YouTube comments</p>
+        <p class="subtitle">Suggestions de reponses IA pour tes commentaires YouTube</p>
       </div>
 
       <div class="onboarding-steps">
+        <!-- Etape 1 : Bienvenue -->
         <div id="step-welcome" class="step active">
-          <p>I'll analyze your recent replies to learn your communication style, then suggest contextual responses for new comments.</p>
+          <p>Je vais analyser ton style de reponse pour generer des suggestions personnalisees.</p>
           <div class="info-box">
-            <strong>How it works:</strong>
+            <strong>Comment ca marche :</strong>
             <ul>
-              <li>Scrapes your past replies to learn your tone</li>
-              <li>Fetches video transcripts for context</li>
-              <li>Generates 3 reply suggestions per comment</li>
-              <li>Everything stays local — no data leaves your browser</li>
+              <li>Analyse de tes reponses passees pour capter ton ton</li>
+              <li>Recuperation du transcript de la video pour le contexte</li>
+              <li>3 suggestions par commentaire, directement dans YouTube Studio</li>
+              <li>Tout reste en local — aucune donnee ne quitte ton navigateur</li>
             </ul>
           </div>
-          <button id="btn-start-analysis" class="btn primary full">
-            Analyze my style
+          <p class="muted" style="margin-bottom: 4px;">Colle 5 a 10 de tes reponses typiques (une par ligne) :</p>
+          <textarea id="manual-replies" rows="6" placeholder="Merci pour ton retour ! C'est exactement le genre de cas que j'aborde dans ma prochaine video...&#10;&#10;Super question ! En fait ca depend de ton contexte. Tu es plutot court terme ou long terme ?&#10;&#10;Ahah je comprends tellement ! L'important c'est de commencer petit 💪"></textarea>
+          <button id="btn-analyze" class="btn primary full">
+            Analyser mon style
           </button>
-          <button id="btn-skip-analysis" class="btn ghost full">
-            Skip — I'll set it up later
+          <button id="btn-skip" class="btn ghost full">
+            Passer — je configurerai plus tard
           </button>
         </div>
 
+        <!-- Etape 2 : Analyse en cours -->
         <div id="step-analyzing" class="step" style="display: none;">
           <div class="progress-section">
             <div class="spinner"></div>
-            <p id="analysis-status">Scanning your replies...</p>
+            <p id="analysis-status">Analyse en cours...</p>
             <div class="progress-bar">
               <div id="progress-fill" class="progress-fill"></div>
             </div>
           </div>
         </div>
 
+        <!-- Etape 3 : Resultat -->
         <div id="step-result" class="step" style="display: none;">
           <div class="result-card">
-            <h3>Style detected ✓</h3>
+            <h3>Style detecte ✓</h3>
             <p id="style-summary"></p>
-            <div id="style-examples" class="examples"></div>
           </div>
           <button id="btn-complete" class="btn primary full">
-            Let's go!
-          </button>
-        </div>
-
-        <div id="step-manual" class="step" style="display: none;">
-          <p>Paste 5-10 of your typical YouTube replies (one per line):</p>
-          <textarea id="manual-replies" rows="8" placeholder="Merci pour ton retour ! C'est exactement le genre de cas que j'aborde dans ma prochaine video..."></textarea>
-          <button id="btn-manual-analyze" class="btn primary full">
-            Build my profile
+            C'est parti !
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ===== Settings View ===== -->
+    <!-- ===== Parametres ===== -->
     <div id="settings" class="view" style="display: none;">
       <div class="header compact">
         <h1>YT Reply Assistant</h1>
         <span id="version" class="version">v0.1.0</span>
       </div>
 
-      <!-- Provider Section -->
+      <!-- Etat -->
+      <section class="section" id="status-section">
+        <div id="active-status" class="status-bar">
+          <span class="status-dot green"></span>
+          <span>Actif sur YouTube Studio</span>
+        </div>
+      </section>
+
+      <!-- Provider IA -->
       <section class="section">
-        <h2>AI Provider</h2>
+        <h2>Provider IA</h2>
         <div class="setting-row">
-          <label for="provider-select">Active provider</label>
+          <label for="provider-select">Provider actif</label>
           <select id="provider-select">
-            <option value="chrome-ai">Chrome Built-in AI (free)</option>
+            <option value="chrome-ai">Chrome IA integree (gratuit)</option>
             <option value="anthropic">Anthropic — Claude Haiku</option>
             <option value="openai">OpenAI — GPT-4o mini</option>
           </select>
@@ -89,52 +93,60 @@
 
         <div id="chrome-ai-status" class="provider-status">
           <span id="chrome-ai-indicator" class="status-dot"></span>
-          <span id="chrome-ai-text">Checking availability...</span>
+          <span id="chrome-ai-text">Verification...</span>
         </div>
 
         <div id="anthropic-config" class="provider-config" style="display: none;">
           <div class="setting-row">
-            <label for="anthropic-key">API Key</label>
+            <label for="anthropic-key">Cle API</label>
             <div class="input-with-action">
               <input type="password" id="anthropic-key" placeholder="sk-ant-...">
-              <button id="btn-test-anthropic" class="btn small">Test</button>
+              <button id="btn-test-anthropic" class="btn small">Tester</button>
             </div>
           </div>
           <div id="anthropic-status" class="provider-status" style="display: none;"></div>
+          <p class="muted" style="margin-top: 6px;">~0.25€ pour 1000 reponses generees. <a href="https://console.anthropic.com/settings/keys" target="_blank">Obtenir une cle</a></p>
         </div>
 
         <div id="openai-config" class="provider-config" style="display: none;">
           <div class="setting-row">
-            <label for="openai-key">API Key</label>
+            <label for="openai-key">Cle API</label>
             <div class="input-with-action">
               <input type="password" id="openai-key" placeholder="sk-...">
-              <button id="btn-test-openai" class="btn small">Test</button>
+              <button id="btn-test-openai" class="btn small">Tester</button>
             </div>
           </div>
           <div id="openai-status" class="provider-status" style="display: none;"></div>
         </div>
       </section>
 
-      <!-- Style Section -->
+      <!-- Style de reponse -->
       <section class="section">
-        <h2>Reply Style</h2>
+        <h2>Style de reponse</h2>
         <div id="style-info">
-          <p id="style-info-text" class="muted">Loading...</p>
+          <p id="style-info-text" class="muted">Chargement...</p>
         </div>
-        <button id="btn-reanalyze" class="btn ghost full">Re-analyze my style</button>
+        <div style="display: flex; gap: 6px; margin-top: 8px;">
+          <button id="btn-reanalyze" class="btn ghost" style="flex: 1;">Re-analyser</button>
+          <button id="btn-edit-style" class="btn ghost" style="flex: 1;">Modifier les exemples</button>
+        </div>
+        <div id="edit-style-panel" style="display: none; margin-top: 8px;">
+          <textarea id="edit-replies" rows="5" placeholder="Colle tes reponses typiques ici (une par ligne)..."></textarea>
+          <button id="btn-save-style" class="btn primary full">Sauvegarder</button>
+        </div>
       </section>
 
-      <!-- Cache Section -->
+      <!-- Cache transcript -->
       <section class="section">
-        <h2>Transcript Cache</h2>
-        <p id="cache-info" class="muted">Loading...</p>
-        <button id="btn-clear-cache" class="btn ghost full">Clear cache</button>
+        <h2>Cache des transcripts</h2>
+        <p id="cache-info" class="muted">Chargement...</p>
+        <button id="btn-clear-cache" class="btn ghost full">Vider le cache</button>
       </section>
 
-      <!-- About Section -->
+      <!-- A propos -->
       <section class="section about">
         <p class="muted">YT Reply Assistant v0.1.0</p>
-        <p class="muted">100% local — your data never leaves your browser</p>
+        <p class="muted">100% local — tes donnees ne quittent jamais ton navigateur</p>
       </section>
     </div>
 
